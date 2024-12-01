@@ -266,6 +266,60 @@
         console.log('DOM loaded, initializing session management');
         SessionUtils.initializeSession();
     });
+
+    function handleLoginSuccess(result) {
+        console.log('Received authentication response');
+
+        if (!result.success) {
+            handleLoginError(result);
+            return;
+        }
+
+        try {
+            // Store session ID using SessionUtils
+            if (result.sessionId && typeof SessionUtils !== 'undefined') {
+                SessionUtils.setSessionId(result.sessionId);
+                
+                // Get redirect URL with proper session handling
+                google.script.run
+                    .withSuccessHandler(function(redirectInfo) {
+                        if (!redirectInfo || !redirectInfo.url) {
+                            handleLoginError({ message: 'Failed to get redirect URL' });
+                            return;
+                        }
+
+                        try {
+                            let redirectUrl = redirectInfo.url;
+                            
+                            // Use SessionUtils for URL handling
+                            redirectUrl = SessionUtils.appendSessionToUrl(redirectUrl);
+                            
+                            // Add dashboard parameter
+                            redirectUrl += (redirectUrl.includes('?') ? '&' : '?') + 'page=dashboard';
+                            
+                            console.log('Redirecting to dashboard');
+                            
+                            // Use existing navigation utility
+                            closeOrRedirect(redirectUrl);
+                            
+                        } catch (e) {
+                            console.error('Navigation error:', e);
+                            handleLoginError({ message: 'Navigation failed: ' + e.message });
+                        }
+                    })
+                    .withFailureHandler(function(error) {
+                        console.error('Redirect URL request failed:', error);
+                        handleLoginError({ message: 'Failed to complete login process' });
+                    })
+                    .getRedirectUrl();
+            } else {
+                handleLoginError({ message: 'Session management not available' });
+            }
+        } catch (e) {
+            console.error('Login success handling error:', e);
+            handleLoginError({ message: 'Error during login process: ' + e.message });
+        }
+    }
   </script>
 </body>
 </html>
