@@ -21,8 +21,7 @@
  *   - Data is fetched, processed, and returned to the client-side scripts for dynamic content
  *     rendering.
  *
- * Author: [Your Name]
- * Date: [Date]
+ * Last Updated: December 1, 2024 22:00 GMT+2
  *******************************************************************************************/
 
 // Replace with your actual Spreadsheet ID
