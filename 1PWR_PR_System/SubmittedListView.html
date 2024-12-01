@@ -1,0 +1,197 @@
+<!--
+/****************************************************************************
+* File: SubmittedListView.html
+* Purpose: Provides a detailed view of all PRs in 'Submitted' status
+* 
+* Integration Points:
+* - Included by Code.gs doGet handler when page=submitted parameter is present
+* - Uses SystemUtilities.html for common functions
+* - Reads data from Master Log sheet via getSubmittedListData function
+* - Links back to dashboard via returnToDashboard function
+* - Links to PR View for individual PRs via generateViewLink function
+* 
+* Data Framework:
+* Columns displayed match Submitted sheet specification:
+* - PR Number
+* - Description
+* - Submitted By
+* - Submitted Date
+* - Resubmitted Date
+* - Days Open
+* - Days Since Resubmission
+* - Link
+* 
+* Status Rules:
+* - Shows only PRs where PR_STATUS = 'Submitted'
+* - Ordered by submission date (newest first)
+* - Paginated to prevent performance issues with large datasets
+* 
+* Author: [Your Name]
+* Last Updated: 2024-11-19
+*****************************************************************************/
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Submitted Purchase Requests</title>
+    <!-- Include Tailwind CSS for styling -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <!-- Include system utilities for common functions -->
+    <?!= include('SystemUtilities'); ?>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header Section with Navigation -->
+        <div class="flex justify-between items-center mb-6">
+            <div class="flex items-center">
+                <!-- 1PWR Logo -->
+                <img src="https://1pwrafrica.com/wp-content/uploads/2018/11/logo.png"
+                     alt="1PWR Logo"
+                     class="h-10 w-auto mr-4">
+                <h1 class="text-2xl font-bold">Submitted Purchase Requests</h1>
+            </div>
+            <!-- Return to Dashboard Button -->
+            <button onclick="returnToDashboard()"
+                    class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                Back to Dashboard
+            </button>
+        </div>
+
+        <!-- Main Data Table -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+                <!-- Table Headers - Populated from getSubmittedListData headers array -->
+                <thead class="bg-gray-50">
+                    <tr>
+                        <? headers.forEach(function(header) { ?>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <?= header ?>
+                            </th>
+                        <? }); ?>
+                    </tr>
+                </thead>
+                
+                <!-- Table Body - Populated from getSubmittedListData rows array -->
+                <tbody class="bg-white divide-y divide-gray-200">
+    <? if (rows && rows.length > 0) { ?>
+        <? rows.forEach(function(row) { ?>
+            <tr class="hover:bg-gray-50 transition-colors duration-150">
+                <!-- PR Number Column -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <?= row.prNumber ?><!-- Changed from poNumber to prNumber -->
+                </td>
+                <!-- Description Column -->
+                <td class="px-6 py-4">
+                    <?= row.description ?>
+                </td>
+                <!-- Submitted By Column -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <?= row.submittedBy ?>
+                </td>
+                <!-- Submitted Date Column -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <?= row.submittedDate ?>
+                </td>
+                <!-- Resubmitted Date Column -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <?= row.resubmittedDate ?>
+                </td>
+                <!-- Days Open Column -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <?= row.daysOpen ?>
+                </td>
+                <!-- Days Since Resubmission Column - New -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <?= row.daysSinceResubmission ?>
+                </td>
+                <!-- Actions Column -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <button onclick="window.location.href='<?= row.link ?>'"
+                            class="text-blue-600 hover:text-blue-900 font-medium">
+                        View PR
+                    </button>
+                </td>
+            </tr>
+        <? }); ?>
+    <? } else { ?>
+        <!-- No Data State - Update colspan to match new column count -->
+        <tr>
+            <td colspan="8" class="px-6 py-4 text-center text-gray-500">
+                No submitted purchase requests found
+            </td>
+        </tr>
+    <? } ?>
+</tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Section -->
+        <div class="mt-4 flex items-center justify-between">
+            <!-- Mobile Pagination Controls -->
+            <div class="flex-1 flex justify-between sm:hidden">
+                <button onclick="changePage(<?= pagination.currentPage - 1 ?>)"
+                        <?= pagination.currentPage <= 1 ? 'disabled' : '' ?>
+                        class="btn-pagination">
+                    Previous
+                </button>
+                <button onclick="changePage(<?= pagination.currentPage + 1 ?>)"
+                        <?= pagination.currentPage >= pagination.totalPages ? 'disabled' : '' ?>
+                        class="btn-pagination">
+                    Next
+                </button>
+            </div>
+
+            <!-- Desktop Pagination Controls -->
+            <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <!-- Page Information -->
+                <div>
+                    <p class="text-sm text-gray-700">
+                        Showing page <?= pagination.currentPage ?> of <?= pagination.totalPages ?>
+                        (<?= pagination.totalItems ?> items total)
+                    </p>
+                </div>
+                <!-- Page Number Buttons -->
+                <div>
+                    <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                        <? for(var i = 1; i <= pagination.totalPages; i++) { ?>
+                            <button onclick="changePage(<?= i ?>)"
+                                    class="btn-pagination <?= i === pagination.currentPage ? 'active' : '' ?>">
+                                <?= i ?>
+                            </button>
+                        <? } ?>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Functions -->
+    <script>
+        /**
+         * Changes the current page of the submitted PRs list
+         * Updates URL with new page parameter
+         * @param {number} page - The page number to navigate to
+         */
+        function changePage(page) {
+            window.location.href = '?page=submitted&p=' + page;
+        }
+
+        /**
+         * Returns to the main dashboard
+         * Uses the web app URL from Code.gs
+         */
+        function returnToDashboard() {
+            google.script.run
+                .withSuccessHandler(function(url) {
+                    window.top.location.href = url;
+                })
+                .withFailureHandler(function(error) {
+                    console.error('Failed to return to dashboard:', error);
+                    showError('Failed to return to dashboard: ' + error);
+                })
+                .getWebAppUrl();
+        }
+    </script>
+</body>
+</html>

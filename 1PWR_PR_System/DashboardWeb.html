@@ -1,0 +1,789 @@
+/**
+* 1PWR Procurement Dashboard Web Interface
+* ==================================
+*
+* Purpose:
+* -------
+* This file contains the HTML structure and client-side JavaScript for the 1PWR procurement dashboard. It is responsible for rendering the dashboard UI, handling user interactions, and communicating with the server-side Code.gs script to fetch and display data.
+*
+* Integration Points:
+* ------------------
+* - Code.gs: The server-side script that provides the data and functionality for the dashboard, including fetching PR and PO information, handling status updates, and managing user permissions.
+* - SessionUtilities.html: Handles session management and secure navigation between the dashboard and other pages.
+* - SystemUtilities.html: Provides utility functions for error handling, date formatting, and loading state management.
+*
+* Data Framework:
+* --------------
+* The dashboard retrieves data from the "Master Log" sheet in the 1PWR procurement tracking spreadsheet. It displays information about purchase requisitions (PRs) and purchase orders (POs), organized by their current status.
+*
+* Core Functionality:
+* -----------------
+* 1. Organization Filtering: Allows users to filter the dashboard data by the acquiring organization (1PWR LESOTHO, SMP, PUECO).
+* 2. Status Grid: Displays the counts and lists of PRs/POs grouped by their current status (Submitted, In Queue, Ordered, Completed, R&R, Rejected, Canceled).
+* 3. Metrics and Summaries: Calculates and displays key metrics and summaries about the procurement data, such as total PRs, urgent PRs, average days open, overdue PRs, and completion rate.
+* 4. PR/PO Navigation: Provides links to navigate to the detailed view of individual PRs and POs.
+* 5. Auto-Refresh: Periodically refreshes the dashboard data to keep it up-to-date.
+*
+* Dependencies:
+* ------------
+* - Tailwind CSS 2.2.19 for styling
+* - Google Apps Script environment for integration with server-side functions
+*
+*/
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>1PWR Procurement Dashboard</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+  <?!= include('DashboardStyles'); ?>
+  <?!= include('SessionUtilities'); ?>
+</head>
+<body class="bg-gray-100">
+  <!-- Header Section -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="py-4">
+        <!-- Top row with logo -->
+        <div class="flex justify-between items-center mb-4">
+          <!-- Logo -->
+          <div class="flex items-center">
+            <img 
+              src="https://1pwrafrica.com/wp-content/uploads/2018/11/logo.png" 
+              alt="1PWR Logo" 
+              class="h-10 w-auto"
+            />
+          </div>
+        </div>
+        
+        <!-- Bottom row with existing functionality -->
+        <div class="flex justify-end items-center">
+          <!-- Submit New PR Button -->
+          <button
+            onclick="submitNewPR()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center font-medium no-underline cursor-pointer"
+            title="Create new Purchase Requisition"
+          >
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Submit New PR
+          </button>
+          <!-- Last Update Timestamp -->
+          <div class="text-sm text-gray-500 ml-6">
+            Last updated: <span id="lastUpdate"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Organization Toggle Section -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="flex justify-center">
+      <div class="relative w-64">
+        <select 
+          id="orgSelect" 
+          onchange="handleOrgChange(this.value)"
+          class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-2 pl-3 pr-10 text-base"
+        >
+          <option value="">All Organizations</option>
+          <!-- Options will be populated dynamically -->
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Dashboard Content -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="bg-white rounded-lg shadow">
+      <!-- Status Grid Layout -->
+      <div class="grid grid-cols-7 gap-4 p-6">
+        <!-- Submitted Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            <a href="#" onclick="viewSubmitted(); return false;" class="cursor-pointer">
+              Submitted [<span id="submittedCount" class="text-blue-600">0</span>]
+            </a>
+          </h3>
+          <div id="submittedList"
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="Submitted">
+          </div>
+        </div>
+
+        <!-- In Queue Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            In Queue [<span id="inQueueCount" class="text-yellow-600">0</span>]
+          </h3>
+          <div id="inQueueList" 
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="In Queue">
+          </div>
+        </div>
+
+        <!-- Ordered Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            Ordered [<span id="orderedCount" class="text-green-600">0</span>]
+          </h3>
+          <div id="orderedList" 
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="Ordered">
+          </div>
+        </div>
+
+        <!-- Completed Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            Completed [<span id="completedCount" class="text-gray-600">0</span>]
+          </h3>
+          <div id="completedList" 
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="Completed">
+          </div>
+        </div>
+
+        <!-- R&R Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            R&R [<span id="rAndRCount" class="text-orange-600">0</span>]
+          </h3>
+          <div id="rAndRList" 
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="R&R">
+          </div>
+        </div>
+
+        <!-- Rejected Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            Rejected [<span id="rejectedCount" class="text-red-600">0</span>]
+          </h3>
+          <div id="rejectedList" 
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="Rejected">
+          </div>
+        </div>
+
+        <!-- Canceled Status Section -->
+        <div class="text-center">
+          <h3 class="text-lg font-semibold">
+            Canceled [<span id="canceledCount" class="text-gray-400">0</span>]
+          </h3>
+          <div id="canceledList" 
+            class="mt-4 border rounded-lg p-4 min-h-[200px] overflow-y-auto"
+            data-status="Canceled">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-lg p-4 flex items-center space-x-3">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <span class="text-gray-700 font-medium">Loading...</span>
+    </div>
+  </div>
+
+  
+  <script>
+    /**
+     * 1PWR Procurement System - Dashboard JavaScript
+     * --------------------------------------------
+     * This script handles all client-side functionality for the procurement dashboard,
+     * including organization filtering, data loading, auto-refresh, and UI updates.
+     * 
+     * Main Components:
+     * 1. Organization Selection & Filtering
+     * 2. Dashboard Data Management
+     * 3. Auto-refresh System
+     * 4. UI Update Handlers
+     * 5. Error Handling & Loading States
+     * 6. Utility Functions
+     */
+
+    //==============================================================================
+    // Global State Management
+    //==============================================================================
+    let selectedOrg = '1PWR LESOTHO'; // Current selected organization (empty for all)
+    let refreshInterval = null; // Auto-refresh interval handler
+    let lastUpdateTime = null; // Last data update timestamp
+
+    //==============================================================================
+    // Status to Element ID Mapping
+    //==============================================================================
+    /**
+     * Mapping of status to count element IDs
+     */
+    const statusCountIdMap = {
+        'Submitted': 'submittedCount',
+        'In Queue': 'inQueueCount',
+        'Ordered': 'orderedCount',
+        'Completed': 'completedCount',
+        'R&R': 'rAndRCount',
+        'Rejected': 'rejectedCount',
+        'Canceled': 'canceledCount'
+    };
+
+    /**
+     * Mapping of status to list element IDs
+     */
+    const statusListIdMap = {
+        'Submitted': 'submittedList',
+        'In Queue': 'inQueueList',
+        'Ordered': 'orderedList',
+        'Completed': 'completedList',
+        'R&R': 'rAndRList',
+        'Rejected': 'rejectedList',
+        'Canceled': 'canceledList'
+    };
+
+    /**
+     * Gets count element ID for status
+     * @param {string} status - PR status
+     * @returns {string} Element ID for count display
+     */
+    function getCountId(status) {
+        return statusCountIdMap[status] || '';
+    }
+
+    /**
+     * Gets list element ID for status
+     * @param {string} status - PR status
+     * @returns {string} Element ID for PR list
+     */
+    function getListId(status) {
+        return statusListIdMap[status] || '';
+    }
+
+    //==============================================================================
+    // Initialization & Setup
+    //==============================================================================
+    /**
+     * Initialize dashboard when document is ready
+     * Sets up event listeners, loads initial data, and starts refresh cycle
+     */
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Document ready, initializing dashboard...');
+        initializeDashboard();
+        loadOrganizations();
+        loadDashboardData(); // Load data initially
+    });
+
+    /**
+     * Main dashboard initialization
+     * Coordinates all startup processes
+     */
+    function initializeDashboard() {
+        console.log('Starting dashboard initialization');
+        setupEventListeners();
+        startAutoRefresh();
+    }
+
+    /**
+     * Sets up all event listeners for dashboard interactivity
+     */
+    function setupEventListeners() {
+        console.log('Setting up event listeners');
+
+        // Organization selection handling
+        const orgSelect = document.getElementById('orgSelect');
+        if (orgSelect) {
+            orgSelect.addEventListener('change', function() {
+                handleOrgChange(this.value);
+            });
+        } else {
+            console.warn('Organization select element not found');
+        }
+
+        // PR list item clicks
+        document.querySelectorAll('[id$="List"]').forEach(list => {
+            list.addEventListener('click', function(e) {
+                const prItem = e.target.closest('.pr-item');
+                if (prItem) {
+                    const prNumber = prItem.getAttribute('data-pr');
+                    if (prNumber) {
+                        viewPRDetails(prNumber);
+                    }
+                }
+            });
+        });
+
+        // Visibility change handling for refresh management
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    //==============================================================================
+    // Organization Management
+    //==============================================================================
+    /**
+     * Loads organization list from server
+     * Populates organization dropdown with active organizations
+     */
+    function loadOrganizations() {
+        console.log('Loading organizations from server');
+        google.script.run
+            .withSuccessHandler(function(orgs) {
+                console.log('Received organizations:', orgs);
+                populateOrgDropdown(orgs);
+            })
+            .withFailureHandler(function(error) {
+                console.error('Failed to load organizations:', error);
+                showError('Failed to load organizations. Please refresh the page.');
+            })
+            .getActiveOrganizations();
+    }
+
+    /**
+     * Populates organization dropdown with received data
+     * Sets default to 1PWR LESOTHO
+     * @param {Array<string>} orgs - List of active organizations
+     */
+    function populateOrgDropdown(orgs) {
+        const select = document.getElementById('orgSelect');
+        if (!select) {
+            console.error('Organization select element not found');
+            return;
+        }
+
+        // Start with "All Organizations" option
+        select.innerHTML = '<option value="">All Organizations</option>';
+
+        // Add organizations from the sheet
+        orgs.forEach(org => {
+            const option = document.createElement('option');
+            option.value = org;
+            option.textContent = org;
+            // Set selected attribute for 1PWR LESOTHO
+            if (org === '1PWR LESOTHO') {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+
+        // Ensure the selection triggers initial data load
+        if (!selectedOrg) {
+            selectedOrg = '1PWR LESOTHO';
+            loadDashboardData();
+        }
+    }
+
+    /**
+     * Handles organization selection change
+     * @param {string} org - Selected organization
+     */
+    function handleOrgChange(org) {
+        console.log('Organization change:', org);
+        if (selectedOrg === org) return;
+
+        selectedOrg = org;
+        loadDashboardData();
+    }
+
+    //==============================================================================
+    // Data Loading & Dashboard Updates
+    //==============================================================================
+    /**
+     * Loads dashboard data from server based on selected organization
+     */
+    function loadDashboardData() {
+        console.log('Loading dashboard data for org:', selectedOrg);
+        showLoading();
+
+        google.script.run
+            .withSuccessHandler(function(response) {
+                console.log('Received response:', response);
+                hideLoading();
+
+                if (!response) {
+                    showError('No response received from server');
+                    return;
+                }
+
+                if (!response.success) {
+                    showError(response.error || 'Failed to load dashboard data');
+                    return;
+                }
+
+                if (!response.data) {
+                    showError('Response missing data structure');
+                    return;
+                }
+
+                updateDashboard(response.data);
+                if (response.timestamp) {
+                    updateLastUpdated(response.timestamp);
+                }
+            })
+            .withFailureHandler(function(error) {
+                console.error('Failed to load dashboard data:', error);
+                showError('Error loading dashboard data: ' + error);
+                hideLoading();
+            })
+            .getDashboardData(selectedOrg);
+    }
+
+    /**
+     * Updates dashboard UI with received data
+     * @param {Object} data - Dashboard data from server
+     */
+    function updateDashboard(data) {
+        console.log('Updating dashboard with data:', data);
+
+        if (!data || !data.countsByStatus || !data.prs) {
+            console.error('Invalid data structure received:', data);
+            showError('Invalid data structure received');
+            return;
+        }
+
+        // Update status counts using countsByStatus
+        Object.entries(data.countsByStatus).forEach(([status, count]) => {
+            const countElementId = getCountId(status);
+            if (countElementId) {
+                const countElement = document.getElementById(countElementId);
+                if (countElement) {
+                    countElement.textContent = count;
+                } else {
+                    console.warn(`Count element with ID '${countElementId}' not found for status '${status}'`);
+                }
+            } else {
+                console.warn(`No mapping found for status '${status}'`);
+            }
+        });
+
+        // Update PR lists
+        Object.entries(data.prs).forEach(([status, prs]) => {
+            const listElementId = getListId(status);
+            if (listElementId) {
+                const listElement = document.getElementById(listElementId);
+                if (listElement) {
+                    listElement.innerHTML = generatePRList(prs);
+                } else {
+                    console.warn(`List element with ID '${listElementId}' not found for status '${status}'`);
+                }
+            } else {
+                console.warn(`No mapping found for status '${status}'`);
+            }
+        });
+    }
+
+    /**
+     * Generates HTML for PR list items with proper links
+     * @param {Array<Object>} prs - List of PRs to display
+     * @returns {string} HTML string for PR list
+     */
+    function generatePRList(prs) {
+        if (!prs.length) {
+            return '<p class="text-gray-500 text-sm">No PRs</p>';
+        }
+
+        return prs.map(pr => `
+            <div class="pr-item hover:bg-gray-50 p-2 rounded mb-2" data-pr="${pr.prNumber}">
+                <div class="text-left">
+                    <a href="#" onclick="openPRView('${pr.prNumber}'); return false;" 
+                       class="font-medium text-blue-600 hover:text-blue-900">
+                        ${pr.prNumber}
+                    </a>
+                    <div class="text-sm text-gray-600 truncate" title="${pr.description}">
+                        ${pr.description}
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        ${formatDate(pr.timestamp)} - ${pr.requestor}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    /**
+     * Opens PR details view
+     * @param {string} prNumber - PR number to view
+     */
+    function openPRView(prNumber) {
+        console.log('Opening PR view for:', prNumber);
+        google.script.run
+            .withSuccessHandler(function(url) {
+                if (url) {
+                    window.top.location.href = url + '?pr=' + encodeURIComponent(prNumber);
+                } else {
+                    console.error('Failed to get application URL');
+                    showError('Failed to get application URL');
+                }
+            })
+            .withFailureHandler(function(error) {
+                console.error('Navigation failed:', error);
+                showError('Failed to navigate: ' + error);
+            })
+            .generateViewLink(prNumber);
+    }
+
+
+
+    /**
+     * Retrieves the script URL for building links
+     * @returns {string} The script URL
+     */
+    function getScriptUrl() {
+        // Corrected to use window.location.origin + window.location.pathname
+        return window.location.origin + window.location.pathname;
+    }
+
+    /**
+     * Navigates to the "Submitted" PRs page
+     */
+    function viewSubmitted() {
+        console.log('viewSubmitted clicked');
+        // Show loading state
+        showLoading();
+        
+        google.script.run
+            .withSuccessHandler(function(url) {
+                if (url) {
+                    console.log('Navigating to:', url + '?page=submitted');
+                    window.top.location.href = url + '?page=submitted';
+                } else {
+                    console.error('Failed to get application URL');
+                    showError('Failed to get application URL');
+                }
+            })
+            .withFailureHandler(function(error) {
+                console.error('Navigation failed:', error);
+                showError('Failed to navigate: ' + error);
+            })
+            .getWebAppUrl();
+    }
+
+    //==============================================================================
+    // Auto-refresh & Visibility Management
+    //==============================================================================
+    /**
+     * Starts auto-refresh cycle for dashboard data
+     */
+    function startAutoRefresh() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+
+        refreshInterval = setInterval(() => {
+            if (!document.hidden) {
+                loadDashboardData();
+            }
+        }, 300000); // 5 minutes
+    }
+
+    /**
+     * Handles page visibility changes
+     * Pauses refresh when page is hidden, resumes when visible
+     */
+    function handleVisibilityChange() {
+        if (document.hidden) {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        } else {
+            loadDashboardData();
+            startAutoRefresh();
+        }
+    }
+
+    //==============================================================================
+    // UI Utilities & Helpers
+    //==============================================================================
+    /**
+     * Updates last update timestamp display
+     * @param {string} timestamp - ISO timestamp string
+     */
+    function updateLastUpdated(timestamp) {
+        const element = document.getElementById('lastUpdate');
+        if (element) {
+            element.textContent = formatDateTime(new Date(timestamp));
+        }
+        lastUpdateTime = timestamp;
+    }
+
+    /**
+     * Shows loading overlay
+     */
+    function showLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.classList.remove('hidden');
+        }
+        console.log('Loading overlay shown');
+    }
+
+    /**
+     * Hides loading overlay
+     */
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+        console.log('Loading overlay hidden');
+    }
+
+    /**
+     * Displays error message to user
+     * @param {string} message - Error message to display
+     */
+    function showError(message) {
+        console.error('Error:', message);
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50';
+        errorDiv.innerHTML = `
+            <strong class="font-bold">Error:</strong>
+            <span class="block sm:inline">${message}</span>
+        `;
+        document.body.appendChild(errorDiv);
+        setTimeout(() => errorDiv.remove(), 5000);
+    }
+
+    /**
+     * Formats date for display
+     * @param {Date|string} date - Date to format
+     * @returns {string} Formatted date string
+     */
+    function formatDate(date) {
+        if (!date) return '';
+        const dateObj = new Date(date);
+        if (isNaN(dateObj.getTime())) return '';
+        return dateObj.toLocaleDateString();
+    }
+
+    /**
+     * Formats date and time for display
+     * @param {Date|string} date - Date to format
+     * @returns {string} Formatted date and time string
+     */
+    function formatDateTime(date) {
+        if (!date) return '';
+        return date.toLocaleString();
+    }
+
+  
+
+    /**
+     * Submits a new Purchase Requisition
+     */
+    function submitNewPR() {
+        google.script.run
+            .withSuccessHandler(function(url) {
+                window.top.location.href = url + '?page=form';
+            })
+            .getWebAppUrl('form');
+    }
+
+
+
+    /**
+     * Opens PR details view
+     * @param {string} prNumber - PR number to view
+     */
+    function openPRView(prNumber) {
+        console.log('Opening PR view for:', prNumber);
+        google.script.run
+            .withSuccessHandler(function(url) {
+                if (url) {
+                    window.top.location.href = url + '?pr=' + encodeURIComponent(prNumber);
+                } else {
+                    console.error('Failed to get application URL');
+                    showError('Failed to get application URL');
+                }
+            })
+            .withFailureHandler(function(error) {
+                console.error('Navigation failed:', error);
+                showError('Failed to navigate: ' + error);
+            })
+            .generateViewLink(prNumber);
+    }
+
+    // Modified loadDashboardData to include session ID
+function loadDashboardData() {
+  console.log('Loading dashboard data');
+  showLoading();
+  
+  const sessionId = SessionUtils.getSessionId();
+  if (!sessionId) {
+    SessionUtils.handleSessionExpiry();
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      console.log('Received response:', response);
+      hideLoading();
+      
+      if (!response) {
+        showError('No response received from server');
+        return;
+      }
+      
+      if (!response.success) {
+        if (response.sessionExpired) {
+          SessionUtils.handleSessionExpiry();
+        } else {
+          showError(response.error || 'Failed to load dashboard data');
+        }
+        return;
+      }
+      
+      updateDashboard(response.data);
+      if (response.timestamp) {
+        updateLastUpdated(response.timestamp);
+      }
+    })
+    .withFailureHandler(function(error) {
+      console.error('Failed to load dashboard data:', error);
+      showError('Error loading dashboard data: ' + error);
+      hideLoading();
+    })
+    .getDashboardData(sessionId, selectedOrg);
+}
+
+// Modified navigation functions to include session
+function submitNewPR() {
+  google.script.run
+    .withSuccessHandler(function(url) {
+      window.top.location.href = SessionUtils.appendSessionToUrl(url + '?page=form');
+    })
+    .getWebAppUrl();
+}
+
+function viewPRDetails(prNumber) {
+  google.script.run
+    .withSuccessHandler(function(url) {
+      if (url) {
+        window.top.location.href = SessionUtils.appendSessionToUrl(
+          `${url}?page=prview&pr=${encodeURIComponent(prNumber)}`
+        );
+      } else {
+        showError('Failed to get application URL');
+      }
+    })
+    .withFailureHandler(function(error) {
+      console.error('Navigation failed:', error);
+      showError('Failed to navigate: ' + error);
+    })
+    .generateViewLink(prNumber);
+}
+
+// Modified returnToDashboard to include session
+function returnToDashboard() {
+  google.script.run
+    .withSuccessHandler(function(url) {
+      window.top.location.href = SessionUtils.appendSessionToUrl(url);
+    })
+    .getWebAppUrl();
+}
+
+  </script>
+</body>
+</html>

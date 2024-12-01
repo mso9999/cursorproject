@@ -1,0 +1,1527 @@
+/**
+* 1PWR Procurement Form Client-side Functionality
+* ==============================================
+*
+* Purpose:
+* -------
+* This file contains the client-side JavaScript that powers the purchase request form in the 1PWR procurement system. It is responsible for managing user interactions, validating form data, updating the submission preview, and communicating with the server-side Code.gs script to process the form submission.
+*
+* Integration Points:
+* ------------------
+* - Code.gs: The server-side script that handles form data processing, validation, and submission, as well as populating dropdown options from various sheets in the procurement tracking spreadsheet.
+* - style.html: Defines the CSS styles for the form and its elements.
+*
+* Data Framework:
+* --------------
+* The form collects data across multiple sections, including requestor information, project and financial details, location and type, vehicle details, budget and timeline, and additional information. The collected data is stored in a global `formData` object and sent to the server-side for processing.
+*
+* Core Functionality:
+* -----------------
+* 1. Form Navigation: Allows users to navigate between the different sections of the form using the section buttons.
+* 2. Form Validation: Validates the required fields in each section before allowing the user to submit the form.
+* 3. Submission Preview: Updates the right-side preview as the user fills out the form, highlighting required fields.
+* 4. Form Submission: Sends the collected form data to the server-side Code.gs script for processing, validation, and storage.
+* 5. Navigation Warnings: Prevents users from navigating away from the form with unsaved changes.
+*
+* Dependencies:
+* ------------
+* - Google Apps Script environment for integration with server-side functions
+* - Tailwind CSS 2.2.19 for styling
+*
+*/
+
+<script>
+  /*******************************************************************************************
+   * Global Variables
+   * Description:
+   *   Variables that are accessible throughout the script, used to store form data and track
+   *   the current section.
+   *******************************************************************************************/
+  let formData = {
+    requiresSection4: false, // Initialize to false
+  }; // Object to store form data collected from the user
+  let currentSectionId = ''; // Tracks the currently active section
+  // Add this at the global variables section at the top of script.html:
+let sectionsWithErrors = new Set();
+
+// Add these new functions after your existing global variables:
+
+/**
+ * Validates all form fields before submission
+ */
+function validateFormBeforeSubmit() {
+  const requiredFields = {
+    section1: ['requestorName', 'department', 'requestorEmail', 'requestShortDescription'],
+    section2: ['projectCategory', 'acquiringOrganization', 'currency', 'paymentFormat'],
+    section3: ['siteLocation', 'expenseType'],
+    section4: formData.requiresSection4 ? ['vehicleSelection'] : [],
+    section5: ['approvedBudget', 'deadlineDate'],
+    lineItemsSection: [], // Checked separately
+    sectionAdditionalInfo: ['vendor', 'urgencyStatus', 'approverSelection']
+  };
+
+  const errors = {
+    sections: new Set(),
+    fields: new Set()
+  };
+
+  // Validate each section's required fields
+  Object.entries(requiredFields).forEach(([section, fields]) => {
+    fields.forEach(field => {
+      const value = formData[field];
+      if (!value || value.toString().trim() === '') {
+        errors.sections.add(section);
+        errors.fields.add(field);
+      }
+    });
+  });
+
+  // Special validation for line items
+  if (!formData.lineItems || formData.lineItems.length === 0) {
+    errors.sections.add('lineItemsSection');
+  } else {
+    formData.lineItems.forEach((item, index) => {
+      if (!item.item || !item.qty || !item.uom) {
+        errors.sections.add('lineItemsSection');
+      }
+    });
+  }
+
+  return {
+    isValid: errors.sections.size === 0,
+    errors: errors
+  };
+}
+
+/**
+ * Updates the UI to show validation errors
+ */
+function updateValidationUI(errors) {
+  sectionsWithErrors = errors.sections; // Store current error sections
+  
+  // Reset all section buttons to default style
+  const allButtons = document.querySelectorAll('#sectionMenu button');
+  allButtons.forEach(button => {
+    if (!button.disabled) {
+      button.style.backgroundColor = 'blue';
+      button.style.color = 'white';
+    }
+  });
+
+  // Highlight sections with errors
+  errors.sections.forEach(sectionId => {
+    const button = document.querySelector(`#sectionMenu button[onclick="showSection('${sectionId}')"]`);
+    if (button) {
+      button.style.backgroundColor = 'red';
+      button.style.color = 'black';
+    }
+  });
+}
+
+/**
+ * Validates a single section
+ */
+function validateSection(sectionId) {
+  const requiredFields = {
+    section1: ['requestorName', 'department', 'requestorEmail', 'requestShortDescription'],
+    section2: ['projectCategory', 'acquiringOrganization', 'currency', 'paymentFormat'],
+    section3: ['siteLocation', 'expenseType'],
+    section4: formData.requiresSection4 ? ['vehicleSelection'] : [],
+    section5: ['approvedBudget', 'deadlineDate'],
+    lineItemsSection: [], // Handled separately
+    sectionAdditionalInfo: ['vendor', 'urgencyStatus', 'approverSelection']
+  };
+
+  // Special handling for line items section
+  if (sectionId === 'lineItemsSection') {
+    if (!formData.lineItems || formData.lineItems.length === 0) return false;
+    return formData.lineItems.every(item => item.item && item.qty && item.uom);
+  }
+
+  // For other sections, check all required fields
+  const fields = requiredFields[sectionId] || [];
+  return fields.every(field => {
+    const value = formData[field];
+    return value && value.toString().trim() !== '';
+  });
+}
+
+/**
+ * Updates the button color for a specific section
+ */
+function updateSectionButtonColor(sectionId) {
+  // Only update if this section previously had errors
+  if (sectionsWithErrors.has(sectionId)) {
+    const button = document.querySelector(`#sectionMenu button[onclick="showSection('${sectionId}')"]`);
+    if (button) {
+      const isValid = validateSection(sectionId);
+      if (isValid) {
+        button.style.backgroundColor = 'blue';
+        button.style.color = 'white';
+        sectionsWithErrors.delete(sectionId);
+      }
+    }
+  }
+}
+
+
+
+
+
+
+  /*******************************************************************************************
+   * Function: showSection(sectionId)
+   * Description:
+   *   Displays the input fields for the selected form section and hides the section menu.
+   *   Called when a user clicks on a section button in the section menu.
+   * Parameters:
+   *   - sectionId: The identifier of the section to display.
+   *******************************************************************************************/
+  function showSection(sectionId) {
+    currentSectionId = sectionId;
+    document.getElementById('sectionMenu').style.display = 'none';
+    document.getElementById('sectionContent').style.display = 'block';
+    loadSectionFields(sectionId);
+  }
+
+  /*******************************************************************************************
+   * Function: goBack()
+   * Description:
+   *   Returns to the section menu from the current section's input fields.
+   *   Called when a user clicks the "Back" button.
+   *******************************************************************************************/
+  function goBack() {
+    document.getElementById('sectionContent').style.display = 'none';
+    document.getElementById('sectionMenu').style.display = 'block';
+  }
+
+  /*******************************************************************************************
+   * Function: loadSectionFields(sectionId)
+   * Description:
+   *   Dynamically loads the input fields for the specified section into the sectionFields div.
+   *   Handles different sections by their identifiers.
+   * Parameters:
+   *   - sectionId: The identifier of the section to load fields for.
+   *******************************************************************************************/
+
+  function loadSectionFields(sectionId) {
+      const sectionFieldsDiv = document.getElementById('sectionFields');
+      sectionFieldsDiv.innerHTML = ''; // Clear previous content
+
+      switch (sectionId) {
+          case 'section1':
+              // Section 1: Requestor Information
+              sectionFieldsDiv.innerHTML = `
+                  <h3>Requestor Information</h3>
+                  <label>Requestor Name:
+                      <select name="requestorName" required></select>
+                  </label><br><br>
+                  <label>Requestor's Department:
+                      <input type="text" name="department" readonly>
+                  </label><br><br>
+                  <label>Requestor's Email:
+                      <input type="email" name="requestorEmail" readonly>
+                  </label><br><br>
+                  <label>Request Short Description:
+                      <textarea name="requestShortDescription" required></textarea>
+                  </label><br><br>
+              `;
+              // Load requestor options
+              loadRequestorOptions();
+
+              // Add the general section population call
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+              break;
+
+          case 'section2':
+              // Section 2: Project and Financial Details
+              sectionFieldsDiv.innerHTML = `
+                  <h3>Project and Financial Details</h3>
+                  <label>Project Category:
+                      <select name="projectCategory" required>
+                          <option value="">Select Project Category</option>
+                      </select>
+                  </label><br><br>
+                  <label>Acquiring Organization:
+                      <select name="acquiringOrganization" required>
+                          <option value="">Select Organization</option>
+                      </select>
+                  </label><br><br>
+                  <label>Currency:
+                      <select name="currency" required>
+                          <option value="">Select Currency</option>
+                          <option value="LSL">LSL</option>
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                          <option value="GBP">GBP</option>
+                          <option value="Other">Other (write-in)</option>
+                      </select>
+                      <input type="text" name="currencyOther" placeholder="Specify other currency" style="display: none;">
+                  </label><br><br>
+                  <label>Payment Format:
+                      <select name="paymentFormat" required>
+                          <option value="">Select Payment Format</option>
+                          <option value="Cash">Cash</option>
+                          <option value="EFT">EFT</option>
+                          <option value="Card">Card</option>
+                          <option value="Other">Other (write-in)</option>
+                      </select>
+                      <input type="text" name="paymentFormatOther" placeholder="Specify other payment format" style="display: none;">
+                  </label><br><br>
+              `;
+            
+              // Load options after HTML is set
+              setTimeout(() => {
+                 console.log('Loading project categories...');
+                  loadProjectCategoryOptions();
+                  console.log('Loading organization options...');
+                  loadOrganizationOptions();
+              }, 100);
+
+              // Set up event listeners for "Other" options
+              setupCurrencyAndPaymentFormatListeners();
+
+              // Add the general section population call
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+              break;
+
+          case 'section3':
+              // Section 3: Location and Type
+              sectionFieldsDiv.innerHTML = `
+                  <h3>Location and Type</h3>
+                  <label>Site Location:
+                      <select name="siteLocation" required>
+                          <option value="">Select Site Location</option>
+                      </select>
+                  </label><br><br>
+                 <label>Expense Type:
+                      <select name="expenseType" required>
+                          <option value="">Select Expense Type</option>
+                      </select>
+                  </label><br><br>
+                  <label>If Expense Type is Other, please specify:
+                      <input type="text" name="expenseTypeOther">
+                  </label><br><br>
+              `;
+              // Load site location options
+              loadSiteLocationOptions();
+              // Load expense type options
+              loadExpenseTypeOptions();
+
+              // Add the general section population call
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+              break;
+
+          case 'section4':
+              // Section 4: Vehicle Details
+              sectionFieldsDiv.innerHTML = `
+                  <h3>Vehicle Details</h3>
+                  <label>Vehicle Selection:
+                      <select name="vehicleSelection" required>
+                          <option value="">Select Vehicle</option>
+                      </select>
+                  </label><br><br>
+              `;
+              // Load vehicle options
+              loadVehicleOptions();
+
+              // Add the general section population call
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+              break;
+
+          case 'section5':
+              // Section 5: Budget and Timeline
+              sectionFieldsDiv.innerHTML = `
+                  <h3>Budget and Timeline</h3>
+                  <label>Is this part of an Approved Budget?
+                      <select name="approvedBudget" required>
+                          <option value="">Select</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                          <option value="Other">Other (write-in)</option>
+                      </select>
+                      <input type="text" name="approvedBudgetOther" placeholder="Specify other" style="display: none;">
+                  </label><br><br>
+                  <label>Deadline Date:
+                      <input type="date" name="deadlineDate" required>
+                  </label><br><br>
+              `;
+
+              // Add the general section population call
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+              // Set up approved budget listener
+              setupApprovedBudgetListener();
+              break;
+
+          // Update the switch statement in loadSectionFields() to have a single lineItemsSection case:
+          case 'lineItemsSection':
+              // Section 6: Line Items
+              sectionFieldsDiv.innerHTML = `
+                <h3>Line Items</h3>
+                <table id="lineItemsTable">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>QTY</th>
+                      <th>UOM [#, kg, m, etc.]</th>
+                      <th>URL</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="lineItemsTableBody">
+                  </tbody>
+                </table>
+                <button type="button" onclick="addLineItemRow()">Add Line Item</button>
+              `;
+
+              // Populate existing line items or add empty row if none exist
+              const tbody = document.getElementById('lineItemsTableBody');
+              if (formData.lineItems && formData.lineItems.length > 0) {
+                  formData.lineItems.forEach((item, index) => {
+                      addLineItemRow();
+                      setInputValue(`item_${index}`, item.item);
+                      setInputValue(`qty_${index}`, item.qty);
+                      setInputValue(`uom_${index}`, item.uom);
+                      setInputValue(`url_${index}`, item.url);
+                  });
+              } else {
+                  // Add one empty row if no existing items
+                  addLineItemRow();
+              }
+
+              // Add the general section population call
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+              break;
+
+          case 'sectionAdditionalInfo':
+              // Section 7: Additional Information
+              sectionFieldsDiv.innerHTML = `
+                  <h3>Additional Information</h3>
+                  <label>Vendor:
+                      <select name="vendor" required>
+                          <option value="">Select Vendor</option>
+                      </select>
+                  </label><br><br>
+                  <label>If Vendor is Other, please specify:
+                      <input type="text" name="vendorOther">
+                  </label><br><br>
+                  <label>Urgency Status:
+                      <select name="urgencyStatus" required>
+                          <option value="">Select</option>
+                          <option value="Normal">Normal</option>
+                          <option value="Urgent">Urgent</option>
+                      </select>
+                  </label><br><br>
+                  <label>Approver Selection:
+                      <select name="approverSelection" required>
+                          <option value="">Select Approver</option>
+                      </select>
+                  </label><br><br>
+                  
+                  <label>Requestor Notes:
+                     <textarea name="requestorNotes"></textarea>
+                  </label><br><br>
+              `;
+
+             // Load dropdowns after HTML is set
+              setTimeout(() => {
+                  console.log('Loading vendor options...');
+                  loadVendorOptions();
+                  console.log('Loading approver options...');
+                  loadApproverOptions();
+             }, 100);
+
+
+              setTimeout(() => populateFieldsFromFormData(sectionId), 200);
+
+              // Add debug logs
+              console.log('Section 7 loaded');
+              console.log('Approver select element exists:', !!document.getElementsByName('approverSelection')[0]);
+              break;
+
+         default:
+              sectionFieldsDiv.innerHTML = `<p>Section not found.</p>`;
+              break;
+      }
+      addValidationToSection();
+  }
+
+
+  
+
+/**
+* Populates form fields with existing data from formData
+* Called after section fields are loaded
+* @param {string} sectionId - The ID of the current section
+*/
+function populateFieldsFromFormData(sectionId) {
+  // Exit if no formData exists
+  if (!formData) return;
+
+  const sectionFields = document.getElementById('sectionFields');
+  if (!sectionFields) return;
+
+  switch (sectionId) {
+    case 'section1':
+      // Populate Requestor Information
+      setSelectValue('requestorName', formData.requestorName);
+      setInputValue('department', formData.department);
+      setInputValue('requestorEmail', formData.requestorEmail);
+      setInputValue('requestShortDescription', formData.requestShortDescription);
+      break;
+
+    case 'section2':
+      // Populate Project and Financial Details
+      setSelectValue('projectCategory', formData.projectCategory);
+      setSelectValue('acquiringOrganization', formData.acquiringOrganization);
+      setSelectValue('currency', formData.currency);
+      setSelectValue('paymentFormat', formData.paymentFormat);
+      
+      // Handle "Other" fields
+      if (formData.currency === 'Other') {
+        const currencyOtherInput = document.getElementsByName('currencyOther')[0];
+        if (currencyOtherInput) {
+          currencyOtherInput.style.display = 'inline';
+          currencyOtherInput.value = formData.currencyOther || '';
+        }
+      }
+      if (formData.paymentFormat === 'Other') {
+        const paymentFormatOtherInput = document.getElementsByName('paymentFormatOther')[0];
+        if (paymentFormatOtherInput) {
+          paymentFormatOtherInput.style.display = 'inline';
+          paymentFormatOtherInput.value = formData.paymentFormatOther || '';
+        }
+      }
+      break;
+
+    case 'section3':
+      // Populate Location and Type
+      setSelectValue('siteLocation', formData.siteLocation);
+      setSelectValue('expenseType', formData.expenseType);
+      setInputValue('expenseTypeOther', formData.expenseTypeOther);
+      break;
+
+    case 'section4':
+      // Populate Vehicle Details if section is required
+      if (formData.requiresSection4) {
+        setSelectValue('vehicleSelection', formData.vehicleSelection);
+      }
+      break;
+
+    case 'section5':
+      // Populate Budget and Timeline
+      setSelectValue('approvedBudget', formData.approvedBudget);
+      setInputValue('deadlineDate', formData.deadlineDate);
+      
+      if (formData.approvedBudget === 'Other') {
+        const approvedBudgetOtherInput = document.getElementsByName('approvedBudgetOther')[0];
+        if (approvedBudgetOtherInput) {
+          approvedBudgetOtherInput.style.display = 'inline';
+          approvedBudgetOtherInput.value = formData.approvedBudgetOther || '';
+        }
+      }
+      break;
+
+    case 'lineItemsSection':
+      // Populate Line Items
+      if (formData.lineItems && formData.lineItems.length > 0) {
+        const tbody = document.getElementById('lineItemsTableBody');
+        if (tbody) {
+          tbody.innerHTML = ''; // Clear existing rows
+          formData.lineItems.forEach((item, index) => {
+            addLineItemRow(); // Add a new row
+            setInputValue(`item_${index}`, item.item);
+            setInputValue(`qty_${index}`, item.qty);
+            setInputValue(`uom_${index}`, item.uom);
+            setInputValue(`url_${index}`, item.url);
+          });
+        }
+      }
+      break;
+
+    case 'sectionAdditionalInfo':
+      // Populate Additional Information
+      setSelectValue('vendor', formData.vendor);
+      setInputValue('vendorOther', formData.vendorOther);
+      setSelectValue('urgencyStatus', formData.urgencyStatus);
+      setSelectValue('approverSelection', formData.approverSelection);
+      setInputValue('requestorNotes', formData.requestorNotes);
+      break;
+  }
+}
+
+/**
+ * Helper function to set value of a select element
+ * @param {string} name - The name attribute of the select element
+ * @param {string} value - The value to set
+ */
+function setSelectValue(name, value) {
+  const element = document.getElementsByName(name)[0];
+  if (element && value) {
+    // Wait for options to be populated if needed
+    setTimeout(() => {
+      element.value = value;
+      // Trigger change event for selects that have dependent fields
+      const event = new Event('change');
+      element.dispatchEvent(event);
+    }, 100);
+  }
+}
+
+/**
+ * Helper function to set value of an input or textarea element
+ * @param {string} name - The name attribute of the input element
+ * @param {string} value - The value to set
+ */
+function setInputValue(name, value) {
+  const element = document.getElementsByName(name)[0];
+  if (element && value) {
+    element.value = value;
+  }
+}
+
+
+
+  /*******************************************************************************************
+   * Function: loadRequestorOptions()
+   * Description:
+   *   Fetches the list of active requestors from the server and populates the "Requestor Name"
+   *   dropdown. Also sets up an event listener to auto-populate the department and email based
+   *   on the selected requestor.
+   *******************************************************************************************/
+  function loadRequestorOptions() {
+    google.script.run.withSuccessHandler(function(requestors) {
+      const requestorSelect = document.getElementsByName('requestorName')[0];
+      // Add a default option
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select Requestor';
+      requestorSelect.appendChild(defaultOption);
+
+      // Store requestor data for later use
+      const requestorData = {};
+
+      requestors.forEach(req => {
+        const option = document.createElement('option');
+        option.value = req.name;
+        option.textContent = req.name;
+        requestorSelect.appendChild(option);
+
+        // Map requestor name to department and email
+        requestorData[req.name] = {
+          department: req.department,
+          email: req.email
+        };
+      });
+
+      // Event listener to auto-populate department and email when requestor changes
+      requestorSelect.addEventListener('change', function() {
+        const selectedName = this.value;
+        const departmentInput = document.getElementsByName('department')[0];
+        const emailInput = document.getElementsByName('requestorEmail')[0];
+        if (requestorData[selectedName]) {
+          departmentInput.value = requestorData[selectedName].department || '';
+          emailInput.value = requestorData[selectedName].email || '';
+          formData.department = requestorData[selectedName].department || '';
+          formData.requestorEmail = requestorData[selectedName].email || '';
+        } else {
+          departmentInput.value = '';
+          emailInput.value = '';
+          formData.department = '';
+          formData.requestorEmail = '';
+        }
+      });
+    }).getActiveRequestors();
+  }
+
+/**
+ * Function to populate project category dropdown
+ */
+function loadProjectCategoryOptions() {
+    const categorySelect = document.getElementsByName('projectCategory')[0];
+    
+    // Clear existing options
+    categorySelect.innerHTML = '';
+    
+    // Add default option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select Project Category';
+    categorySelect.appendChild(defaultOption);
+
+    google.script.run
+        .withSuccessHandler(function(categories) {
+            console.log('Received categories:', categories);
+            if (Array.isArray(categories)) {
+                categories.forEach(category => {
+                    const option = document.createElement('option');
+                    option.value = category;
+                    option.textContent = category;
+                    categorySelect.appendChild(option);
+                });
+            }
+        })
+        .withFailureHandler(function(error) {
+            console.error('Failed to load categories:', error);
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Error loading categories';
+            categorySelect.appendChild(errorOption);
+        })
+        .getProjectCategories();
+}
+
+/**
+ * Function to populate organization dropdown
+ */
+function loadOrganizationOptions() {
+    const orgSelect = document.getElementsByName('acquiringOrganization')[0];
+    
+    // Clear existing options
+    orgSelect.innerHTML = '';
+    
+    // Add default option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select Organization';
+    orgSelect.appendChild(defaultOption);
+
+    google.script.run
+        .withSuccessHandler(function(organizations) {
+            console.log('Received organizations:', organizations);
+            if (Array.isArray(organizations)) {
+                organizations.forEach(org => {
+                    const option = document.createElement('option');
+                    option.value = org;
+                    option.textContent = org;
+                    orgSelect.appendChild(option);
+                });
+            }
+        })
+        .withFailureHandler(function(error) {
+            console.error('Failed to load organizations:', error);
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Error loading organizations';
+            orgSelect.appendChild(errorOption);
+        })
+        .getActiveOrganizations();
+}
+
+  /*******************************************************************************************
+   * Function: setupCurrencyAndPaymentFormatListeners()
+   * Description:
+   *   Sets up event listeners for the "Currency" and "Payment Format" fields to handle "Other"
+   *   options and display corresponding input fields.
+   *******************************************************************************************/
+  function setupCurrencyAndPaymentFormatListeners() {
+    const currencySelect = document.getElementsByName('currency')[0];
+    const currencyOtherInput = document.getElementsByName('currencyOther')[0];
+    currencySelect.addEventListener('change', function() {
+      if (this.value === 'Other') {
+        currencyOtherInput.style.display = 'inline';
+      } else {
+        currencyOtherInput.style.display = 'none';
+        currencyOtherInput.value = '';
+      }
+    });
+
+    const paymentFormatSelect = document.getElementsByName('paymentFormat')[0];
+    const paymentFormatOtherInput = document.getElementsByName('paymentFormatOther')[0];
+    paymentFormatSelect.addEventListener('change', function() {
+      if (this.value === 'Other') {
+        paymentFormatOtherInput.style.display = 'inline';
+      } else {
+        paymentFormatOtherInput.style.display = 'none';
+        paymentFormatOtherInput.value = '';
+      }
+    });
+  }
+
+  /*******************************************************************************************
+   * Function: loadSiteLocationOptions()
+   * Description:
+   *   Fetches the list of active sites from the server and populates the "Site Location" dropdown.
+   *******************************************************************************************/
+  function loadSiteLocationOptions() {
+    google.script.run.withSuccessHandler(function(sites) {
+      const siteSelect = document.getElementsByName('siteLocation')[0];
+      // Add a default option
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select Site Location';
+      siteSelect.appendChild(defaultOption);
+
+      sites.forEach(site => {
+        const option = document.createElement('option');
+        option.value = site.code + ':' + site.name;
+        option.textContent = site.name;
+        siteSelect.appendChild(option);
+      });
+    }).getActiveSites();
+  }
+
+  /*******************************************************************************************
+   * Function: loadExpenseTypeOptions()
+   * Description:
+   *   Fetches the list of active expense types from the server and populates the "Expense Type"
+   *   dropdown. Sets up an event listener to handle conditional logic for Section 4.
+   *******************************************************************************************/
+  function loadExpenseTypeOptions() {
+    google.script.run.withSuccessHandler(function(expenseTypes) {
+      const expenseTypeSelect = document.getElementsByName('expenseType')[0];
+      // Clear existing options
+      expenseTypeSelect.innerHTML = '';
+      // Add a default option
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select Expense Type';
+      expenseTypeSelect.appendChild(defaultOption);
+
+      expenseTypes.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.code + ':' + type.expenseType;
+        option.textContent = type.code + ':' + type.expenseType;
+        expenseTypeSelect.appendChild(option);
+      });
+    }).getExpenseTypes();
+
+    // Event listener to handle conditional logic for Section 4
+    const expenseTypeSelect = document.getElementsByName('expenseType')[0];
+    expenseTypeSelect.addEventListener('change', function() {
+      const selectedValue = this.value;
+      const section4Button = document.querySelector('#sectionMenu button[onclick="showSection(\'section4\')"]');
+      if (selectedValue.startsWith('4:')) {
+        // Enable Section 4
+        section4Button.disabled = false;
+        // Mark Section 4 as required
+        formData.requiresSection4 = true;
+      } else {
+        // Disable Section 4
+        section4Button.disabled = true;
+        // Remove any data from Section 4
+        formData.requiresSection4 = false;
+        delete formData.vehicleSelection;
+      }
+    });
+  }
+
+  /*******************************************************************************************
+   * Function: loadVehicleOptions()
+   * Description:
+   *   Fetches the list of active vehicles from the server and populates the "Vehicle Selection"
+   *   dropdown.
+   *******************************************************************************************/
+  function loadVehicleOptions() {
+    google.script.run.withSuccessHandler(function(vehicles) {
+      const vehicleSelect = document.getElementsByName('vehicleSelection')[0];
+      // Clear existing options
+      vehicleSelect.innerHTML = '';
+
+      // Add a default option
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select Vehicle';
+      vehicleSelect.appendChild(defaultOption);
+
+      vehicles.forEach(vehicle => {
+        const option = document.createElement('option');
+        option.value = vehicle.name; // Include more info if needed
+        option.textContent = vehicle.name + ' (' + vehicle.registrationStatus + ')';
+        vehicleSelect.appendChild(option);
+      });
+    }).getActiveVehicles();
+  }
+
+  /*******************************************************************************************
+   * Function: setupApprovedBudgetListener()
+   * Description:
+   *   Sets up an event listener for the "Approved Budget" field to handle the "Other" option
+   *   and display the corresponding input field.
+   *******************************************************************************************/
+  function setupApprovedBudgetListener() {
+    const approvedBudgetSelect = document.getElementsByName('approvedBudget')[0];
+    const approvedBudgetOtherInput = document.getElementsByName('approvedBudgetOther')[0];
+    approvedBudgetSelect.addEventListener('change', function() {
+      if (this.value === 'Other') {
+        approvedBudgetOtherInput.style.display = 'inline';
+      } else {
+        approvedBudgetOtherInput.style.display = 'none';
+        approvedBudgetOtherInput.value = '';
+      }
+    });
+  }
+
+  /*******************************************************************************************
+   * Function: loadVendorOptions()
+   * Description:
+   *   Fetches the list of approved vendors from the server and populates the "Vendor" dropdown.
+   *******************************************************************************************/
+  /**
+ * Loads vendor options into dropdown
+ */
+function loadVendorOptions() {
+    console.log('Loading vendor options...');
+    const vendorSelect = document.getElementsByName('vendor')[0];
+    const vendorOtherInput = document.getElementsByName('vendorOther')[0];
+    
+    // Clear existing options
+    vendorSelect.innerHTML = '';
+    
+    // Add default option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select Vendor';
+    vendorSelect.appendChild(defaultOption);
+
+    google.script.run
+        .withSuccessHandler(function(vendors) {
+            console.log('Received vendors:', vendors);
+            if (Array.isArray(vendors)) {
+                vendors.forEach(vendor => {
+                    const option = document.createElement('option');
+                    option.value = vendor.name;
+                    option.textContent = vendor.name;
+                    vendorSelect.appendChild(option);
+                });
+
+                // Add Other option
+                const otherOption = document.createElement('option');
+                otherOption.value = 'Other';
+                otherOption.textContent = 'Other (write-in)';
+                vendorSelect.appendChild(otherOption);
+
+                // Restore any previously selected value
+                if (formData.vendor) {
+                    vendorSelect.value = formData.vendor;
+                    // Show/hide and restore Other input if needed
+                    if (formData.vendor === 'Other' && vendorOtherInput) {
+                        vendorOtherInput.style.display = 'inline';
+                        vendorOtherInput.value = formData.vendorOther || '';
+                    }
+                }
+            }
+        })
+        .withFailureHandler(function(error) {
+            console.error('Failed to load vendors:', error);
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Error loading vendors';
+            vendorSelect.appendChild(errorOption);
+        })
+        .getApprovedVendors();
+
+    // Add change handler for Other option
+    vendorSelect.addEventListener('change', function() {
+        if (vendorOtherInput) {
+            vendorOtherInput.style.display = this.value === 'Other' ? 'inline' : 'none';
+            if (this.value !== 'Other') {
+                vendorOtherInput.value = '';
+            }
+        }
+        // Update formData
+        formData.vendor = this.value;
+    });
+
+    // Add change handler for Other input
+    if (vendorOtherInput) {
+        vendorOtherInput.addEventListener('change', function() {
+            formData.vendorOther = this.value;
+        });
+    }
+}
+
+
+  /*******************************************************************************************
+   * Function: loadApproverOptions()
+   * Description:
+   *   Fetches the list of active approvers from the server and populates the "Approver Selection"
+   *   dropdown.
+   *******************************************************************************************/
+ /**
+ * Test function to verify approver data loading
+ */
+function testApproverCall() {
+    console.log('Testing approver data loading...');
+    
+    const approverSelect = document.getElementsByName('approverSelection')[0];
+    if (!approverSelect) {
+        console.error('Approver select element not found!');
+        return;
+    }
+    
+    google.script.run
+        .withSuccessHandler(function(approvers) {
+            console.log('Received approver data:', approvers);
+            alert('Approvers received: ' + JSON.stringify(approvers, null, 2));
+        })
+        .withFailureHandler(function(error) {
+            console.error('Error getting approvers:', error);
+            alert('Error getting approvers: ' + error);
+        })
+        .getActiveApprovers();
+}
+
+/**
+ * Enhanced version of loadApproverOptions with more logging
+ */
+function loadApproverOptions() {
+    console.log('loadApproverOptions called');
+    const approverSelect = document.getElementsByName('approverSelection')[0];
+    
+    if (!approverSelect) {
+        console.error('approverSelection element not found!');
+        return;
+    }
+
+    // Clear existing options
+    while (approverSelect.firstChild) {
+        approverSelect.removeChild(approverSelect.firstChild);
+    }
+    
+    // Add default option
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select Approver';
+    approverSelect.appendChild(defaultOption);
+    
+    console.log('Calling server for approvers...');
+    
+    google.script.run
+        .withSuccessHandler(function(approvers) {
+            console.log('Received approvers:', approvers);
+            
+            if (!Array.isArray(approvers)) {
+                console.error('Invalid approvers data received:', approvers);
+                return;
+            }
+            
+            approvers.forEach((approver, index) => {
+                console.log(`Adding approver ${index}:`, approver);
+                const option = document.createElement('option');
+                option.value = approver.name;
+                option.textContent = `${approver.name} (${approver.department})`;
+                approverSelect.appendChild(option);
+            });
+            
+            console.log('Finished adding approvers. Final options count:', approverSelect.options.length);
+        })
+        .withFailureHandler(function(error) {
+            console.error('Failed to load approvers:', error);
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Error loading approvers';
+            approverSelect.appendChild(errorOption);
+        })
+        .getActiveApprovers();
+}
+
+  /*******************************************************************************************
+   * Function: addLineItemRow()
+   * Description:
+   *   Adds a new row to the line items table in the Line Items section.
+   *   Allows users to input multiple line items dynamically.
+   *******************************************************************************************/
+  function addLineItemRow() {
+    const tbody = document.getElementById('lineItemsTableBody');
+    const rowCount = tbody.rows.length;
+    const row = tbody.insertRow();
+
+    row.className = 'line-item-row';
+
+    // Item
+    let cell = row.insertCell(0);
+    cell.innerHTML = `<input type="text" name="item_${rowCount}" required>`;
+
+    // QTY
+    cell = row.insertCell(1);
+    cell.innerHTML = `<input type="number" name="qty_${rowCount}" required>`;
+
+    // UOM
+    cell = row.insertCell(2);
+    cell.innerHTML = `<input type="text" name="uom_${rowCount}" required>`;
+
+    // URL
+    cell = row.insertCell(3);
+    cell.innerHTML = `<input type="url" name="url_${rowCount}">`;
+
+    // Action
+    cell = row.insertCell(4);
+    cell.innerHTML = `<button type="button" onclick="removeLineItemRow(this)">Remove</button>`;
+
+    updateSubmitButtonState();
+  }
+
+  /*******************************************************************************************
+   * Function: removeLineItemRow(button)
+   * Description:
+   *   Removes a line item row from the line items table.
+   * Parameters:
+   *   - button: The "Remove" button element clicked by the user.
+   *******************************************************************************************/
+  function removeLineItemRow(button) {
+    const row = button.parentNode.parentNode;
+    row.parentNode.removeChild(row);
+
+    if (currentSectionId === 'lineItemsSection') {
+    formData.lineItems = collectLineItems();
+    }
+    updateSubmitButtonState();
+  }
+
+  /*******************************************************************************************
+   * Function: copyToPreview()
+   * Description:
+   *   Collects data from the input fields in the current section and updates the submission
+   *   preview on the right side. Stores the data in the global formData object.
+   *******************************************************************************************/
+  // Replace your existing copyToPreview function with this updated version:
+function copyToPreview() {
+  
+  const inputs = document.querySelectorAll('#sectionFields input, #sectionFields select, #sectionFields textarea');
+  inputs.forEach(input => {
+    formData[input.name] = input.value;
+  });
+
+  if (currentSectionId === 'lineItemsSection') {
+    formData.lineItems = collectLineItems();
+  }
+
+  updatePreview();
+  
+  // Check if this section's validation state has changed
+  updateSectionButtonColor(currentSectionId);
+  
+  // Add this line to update submit button state
+  updateSubmitButtonState();
+}
+
+  /*******************************************************************************************
+   * Function: collectLineItems()
+   * Description:
+   *   Collects data from the line items table and returns an array of line item objects.
+   *   Each line item object contains item, qty, uom, and url properties.
+   * Returns:
+   *   - An array of line item objects.
+   *******************************************************************************************/
+  function collectLineItems() {
+    const lineItems = [];
+    const lineItemRows = document.querySelectorAll('.line-item-row');
+    lineItemRows.forEach((row, index) => {
+      const item = row.querySelector(`input[name="item_${index}"]`).value;
+      const qty = row.querySelector(`input[name="qty_${index}"]`).value;
+      const uom = row.querySelector(`input[name="uom_${index}"]`).value;
+      const url = row.querySelector(`input[name="url_${index}"]`).value;
+      lineItems.push({ item, qty, uom, url });
+    });
+    return lineItems;
+  }
+
+  /*******************************************************************************************
+   * Function: updatePreview()
+   * Description:
+   *   Updates the submission preview on the right side with the data collected in formData.
+   *   Highlights required fields in yellow if empty and green if filled.
+   *******************************************************************************************/
+  
+
+function updatePreview() {
+  const previewContent = document.getElementById('previewContent');
+  
+  // Clear existing content
+  previewContent.innerHTML = '';
+  
+  // Create top row grid for Sections 1 and 7
+  const topGrid = document.createElement('div');
+  topGrid.className = 'top-section-grid';
+  
+  // Section 1
+  const section1 = document.createElement('div');
+  section1.className = 'top-section';
+  section1.innerHTML = `
+    <h3>Section 1: Requestor Information</h3>
+    <p><strong>Requestor Name:</strong> ${highlightField('requestorName')}</p>
+    <p><strong>Department:</strong> ${highlightField('department')}</p>
+    <p><strong>Email:</strong> ${highlightField('requestorEmail')}</p>
+    <p><strong>Request Short Description:</strong> ${highlightField('requestShortDescription')}</p>
+  `;
+
+  // Section 7
+  const section7 = document.createElement('div');
+  section7.className = 'top-section';
+  section7.innerHTML = `
+    <h3>Section 7: Additional Information</h3>
+    <p><strong>Vendor:</strong> ${formData.vendor || ''}</p>
+    <p><strong>If Vendor is Other:</strong> ${formData.vendorOther || ''}</p>
+    <p><strong>Urgency Status:</strong> ${formData.urgencyStatus || ''}</p>
+    <p><strong>Approver Selection:</strong> ${highlightField('approverSelection')}</p>
+    <p><strong>Requestor Notes:</strong> ${formData.requestorNotes || ''}</p>
+  `;
+
+  // Add sections to top grid
+  topGrid.appendChild(section1);
+  topGrid.appendChild(section7);
+  
+  // Add top grid to preview
+  previewContent.appendChild(topGrid);
+
+  // Create grid for Sections 2-5
+  const quadGrid = document.createElement('div');
+  quadGrid.className = 'quad-section-grid';
+  
+  // Section 2
+  const section2 = document.createElement('div');
+  section2.className = 'quad-section';
+  section2.innerHTML = `
+    <h3>Section 2: Project and Financial Details</h3>
+    <p><strong>Project Category:</strong> ${highlightField('projectCategory')}</p>
+    <p><strong>Acquiring Organization:</strong> ${highlightField('acquiringOrganization')}</p>
+    <p><strong>Currency:</strong> ${formData.currency === 'Other' ? formData.currencyOther || '' : formData.currency || ''}</p>
+    <p><strong>Payment Format:</strong> ${formData.paymentFormat === 'Other' ? formData.paymentFormatOther || '' : formData.paymentFormat || ''}</p>
+  `;
+
+  // Section 3
+  const section3 = document.createElement('div');
+  section3.className = 'quad-section';
+  section3.innerHTML = `
+    <h3>Section 3: Location and Type</h3>
+    <p><strong>Site Location:</strong> ${formData.siteLocation || ''}</p>
+    <p><strong>Expense Type:</strong> ${highlightField('expenseType')}</p>
+    <p><strong>If Expense Type is Other:</strong> ${formData.expenseTypeOther || ''}</p>
+  `;
+
+  // Section 4
+  const section4 = document.createElement('div');
+  section4.className = 'quad-section';
+  section4.innerHTML = `
+    <h3>Section 4: Vehicle Details</h3>
+    ${formData.requiresSection4 ? 
+      `<p><strong>Vehicle Selection:</strong> ${highlightField('vehicleSelection')}</p>` : 
+      '<p>Section not applicable.</p>'}
+  `;
+
+  // Section 5
+  const section5 = document.createElement('div');
+  section5.className = 'quad-section';
+  section5.innerHTML = `
+    <h3>Section 5: Budget and Timeline</h3>
+    <p><strong>Approved Budget:</strong> ${formData.approvedBudget === 'Other' ? formData.approvedBudgetOther || '' : formData.approvedBudget || ''}</p>
+    <p><strong>Deadline Date:</strong> ${formData.deadlineDate || ''}</p>
+  `;
+
+  // Add sections to quad grid
+  quadGrid.appendChild(section2);
+  quadGrid.appendChild(section3);
+  quadGrid.appendChild(section4);
+  quadGrid.appendChild(section5);
+  
+  // Add quad grid to preview
+  previewContent.appendChild(quadGrid);
+
+  // Section 6 (Line Items) - Full Width
+  const section6 = document.createElement('div');
+  section6.className = 'full-width-section';
+  section6.innerHTML = `
+    <h3>Section 6: Line Items</h3>
+    ${generateLineItemsPreview()}
+  `;
+  previewContent.appendChild(section6);
+}
+
+  /*******************************************************************************************
+   * Function: highlightField(fieldName)
+   * Description:
+   *   Checks if a required field is filled and returns the field value wrapped in a span with
+   *   appropriate background color (yellow if empty and green if filled).
+   * Parameters:
+   *   - fieldName: The name of the field to check and display.
+   * Returns:
+   *   - A string containing the field value wrapped in a styled span element.
+   *******************************************************************************************/
+  function highlightField(fieldName) {
+    const value = formData[fieldName] || '';
+    const isFilled = value.trim() !== '';
+    const backgroundColor = isFilled ? '#d4edda' : '#fff3cd'; // Green or Yellow
+    return `<span style="background-color: ${backgroundColor}; padding: 2px 4px;">${value}</span>`;
+  }
+
+  /*******************************************************************************************
+   * Function: generateLineItemsPreview()
+   * Description:
+   *   Generates an HTML table representing the line items collected in formData.
+   *   Applies highlighting to required fields within line items.
+   * Returns:
+   *   - A string containing the HTML table of line items.
+   *******************************************************************************************/
+  function generateLineItemsPreview() {
+    let lineItemsHtml = '<table border="1" cellpadding="5" cellspacing="0">';
+    lineItemsHtml += '<tr><th>Item</th><th>QTY</th><th>UOM [#, kg, m, etc.]</th><th>URL</th></tr>';
+
+    if (formData.lineItems && formData.lineItems.length > 0) {
+      formData.lineItems.forEach((item, index) => {
+        lineItemsHtml += `
+          <tr>
+            <td>${highlightLineItemField(item.item)}</td>
+            <td>${highlightLineItemField(item.qty)}</td>
+            <td>${highlightLineItemField(item.uom)}</td>
+            <td>${item.url || ''}</td>
+          </tr>
+        `;
+      });
+    } else {
+      lineItemsHtml += '<tr><td colspan="4">No line items added yet.</td></tr>';
+    }
+
+    lineItemsHtml += '</table>';
+    return lineItemsHtml;
+  }
+
+  /*******************************************************************************************
+   * Function: highlightLineItemField(value)
+   * Description:
+   *   Applies highlighting to a field within a line item, similar to highlightField().
+   * Parameters:
+   *   - value: The value of the field to highlight.
+   * Returns:
+   *   - A string containing the field value wrapped in a styled span element.
+   *******************************************************************************************/
+  function highlightLineItemField(value) {
+    const isFilled = value && value.toString().trim() !== '';
+    const backgroundColor = isFilled ? '#d4edda' : '#fff3cd'; // Green or Yellow
+    return `<span style="background-color: ${backgroundColor}; padding: 2px 4px;">${value || ''}</span>`;
+  }
+
+  /*******************************************************************************************
+   * Function: submitForm()
+   * Description:
+   *   Sends the collected form data to the server-side processForm(data) function for validation
+   *   and storage. Handles the response by displaying success messages or highlighting errors.
+   *******************************************************************************************/
+  function submitForm() {
+    console.log('Client-side: Submit button clicked');
+    const validationResult = validateFormBeforeSubmit();
+
+    if (!validationResult.isValid) {
+        console.log('Client-side: Validation failed:', validationResult.errors);
+        updateValidationUI(validationResult.errors);
+        alert('Please fill in all required fields before submitting.');
+        return;
+    }
+
+    console.log('Client-side: Form data being submitted:', formData);
+    const submitButton = document.querySelector('#rightSide button[onclick="submitForm()"]');
+    submitButton.disabled = true;
+
+    // Show loading state
+    submitButton.textContent = 'Submitting...';
+
+    google.script.run
+        .withSuccessHandler(function(response) {
+            console.log('Client-side: Server response:', response);
+            submitButton.disabled = false;
+            submitButton.textContent = 'Submit';
+
+            if (response && response.status === 'success') {
+                console.log('Client-side: Submission successful, PR Number:', response.prNumber);
+                alert('Form submitted successfully! PR Number: ' + response.prNumber);
+                // Reset form data
+                formData = { requiresSection4: false };
+                updatePreview();
+                sectionsWithErrors.clear();
+                // Return to section menu
+                document.getElementById('sectionContent').style.display = 'none';
+                document.getElementById('sectionMenu').style.display = 'block';
+            } else {
+                console.error('Client-side: Submission error:', response);
+                alert('Error submitting form: ' + (response.message || 'Unknown error'));
+            }
+        })
+        .withFailureHandler(function(error) {
+            console.error('Client-side: Submission failed:', error);
+            submitButton.disabled = false;
+            submitButton.textContent = 'Submit';
+            alert('Failed to submit form: ' + error);
+        })
+        .processForm(formData);
+
+    console.log('Client-side: Submit request sent to server');
+}
+
+  /*******************************************************************************************
+   * Function: handleValidationErrors(errors)
+   * Description:
+   *   Updates the section buttons to indicate which sections contain validation errors.
+   *   Called when the server-side validation fails.
+   * Parameters:
+   *   - errors: An array of section identifiers that failed validation.
+   *******************************************************************************************/
+  function handleValidationErrors(errors) {
+    // Reset all section buttons to default style
+    resetSectionButtonStyles();
+
+    // Update section buttons to indicate errors
+    errors.forEach(sectionId => {
+      const button = document.querySelector(`#sectionMenu button[onclick="showSection('${sectionId}')"]`);
+      if (button) {
+        button.style.backgroundColor = 'red';
+        button.style.color = 'black';
+      }
+    });
+    alert('Please correct the highlighted sections.');
+  }
+
+  /*******************************************************************************************
+   * Function: resetSectionButtonStyles()
+   * Description:
+   *   Resets the styles of all section buttons to their default state.
+   *******************************************************************************************/
+  function resetSectionButtonStyles() {
+    const buttons = document.querySelectorAll('#sectionMenu button');
+    buttons.forEach(button => {
+      button.style.backgroundColor = 'blue';
+      button.style.color = 'white';
+    });
+  }
+
+  /*******************************************************************************************
+   * Event Listeners and Initializations
+   * Description:
+   *   Initializes the preview, fetches the PR number, and sets up any required default states.
+   *******************************************************************************************/
+  document.addEventListener('DOMContentLoaded', function() {
+    updatePreview();
+
+    // Fetch and display the PR number
+    google.script.run.withSuccessHandler(function(prNumber) {
+      document.getElementById('prNumber').textContent = prNumber;
+      formData.prNumber = prNumber; // Store in formData if needed
+    }).getPRNumber();
+
+    // Disable Section 4 button by default
+    const section4Button = document.querySelector('#sectionMenu button[onclick="showSection(\'section4\')"]');
+    section4Button.disabled = true;
+
+    updateSubmitButtonState(); // Initial state
+  });
+
+  /**
+ * Checks if all required fields are complete
+ * @returns {boolean} Whether all required fields are filled
+ */
+function checkAllFieldsComplete() {
+  const requiredFields = {
+    section1: ['requestorName', 'department', 'requestorEmail', 'requestShortDescription'],
+    section2: ['projectCategory', 'acquiringOrganization', 'currency', 'paymentFormat'],
+    section3: ['siteLocation', 'expenseType'],
+    section4: formData.requiresSection4 ? ['vehicleSelection'] : [],
+    section5: ['approvedBudget', 'deadlineDate'],
+    sectionAdditionalInfo: ['vendor', 'urgencyStatus', 'approverSelection']
+  };
+
+  // Check all regular fields
+  for (const section in requiredFields) {
+    for (const field of requiredFields[section]) {
+      const value = formData[field];
+      if (!value || value.toString().trim() === '') {
+        return false;
+      }
+    }
+  }
+
+  // Check line items
+  if (!formData.lineItems || formData.lineItems.length === 0) {
+    return false;
+  }
+  
+  for (const item of formData.lineItems) {
+    if (!item.item || !item.qty || !item.uom) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Updates submit button appearance based on field completion
+ */
+function updateSubmitButtonState() {
+  const submitButton = document.querySelector('#rightSide button[onclick="submitForm()"]');
+  if (checkAllFieldsComplete()) {
+    submitButton.classList.add('all-fields-complete');
+  } else {
+    submitButton.classList.remove('all-fields-complete');
+  }
+}
+
+/**
+ * Adds validation event listeners to the current section
+ * Called after loading each section's fields
+ */
+/**
+ * Adds validation event listeners to the current section
+ * @throws {Error} If sectionFields div is not found
+ */
+function addValidationToSection() {
+    const sectionFieldsDiv = document.getElementById('sectionFields');
+    if (!sectionFieldsDiv) {
+        console.error('Section fields div not found');
+        return;
+    }
+
+    // Add input event listeners to all form elements
+    const formElements = sectionFieldsDiv.querySelectorAll('input, select, textarea');
+    formElements.forEach(element => {
+        // Skip read-only fields
+        if (element.readOnly) return;
+        
+        element.addEventListener('input', function() {
+            // Update formData with new value
+            const value = this.type === 'checkbox' ? this.checked : this.value;
+            formData[this.name] = value;
+            
+            // Handle special cases for "Other" fields
+            if (this.tagName === 'SELECT' && value === 'Other') {
+                const otherInput = document.getElementsByName(`${this.name}Other`)[0];
+                if (otherInput) {
+                    otherInput.style.display = 'inline';
+                    otherInput.required = true;
+                }
+            }
+
+            // Check if this section is now valid
+            const isSectionValid = validateSection(currentSectionId);
+            
+            // Update section button appearance
+            updateSectionButtonColor(currentSectionId);
+            
+            // Update submit button state
+            updateSubmitButtonState();
+            
+            console.log(`Field ${this.name} updated, section validity:`, isSectionValid);
+        });
+    });
+
+    console.log(`Validation listeners added to ${currentSectionId}`);
+}
+
+/**
+ * Validates a specific section
+ * @param {string} sectionId - The ID of the section to validate
+ * @returns {boolean} Whether the section is valid
+ */
+function validateSection(sectionId) {
+    const sectionFields = document.getElementById('sectionFields')
+        .querySelectorAll('input[required], select[required], textarea[required]');
+    
+    return Array.from(sectionFields).every(field => {
+        if (field.type === 'hidden') return true;
+        const value = field.value.trim();
+        return value !== '' && value !== 'Select';
+    });
+}
+
+</script>
+
+
+

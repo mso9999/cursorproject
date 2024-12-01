@@ -1,0 +1,454 @@
+<!--
+/*******************************************************************************************
+ * File: style.html
+ * Description:
+ *   This CSS stylesheet defines the styles for the custom purchase request web app. It ensures
+ *   that the layout is responsive and user-friendly, and it styles various elements such as
+ *   the left and right sides, section buttons, form fields, tables, and the submission preview.
+ *   The styles accommodate the 1PWR logo and new UI elements added in the updated index.html
+ *   and script.html files.
+ *
+ * Relationship with Other Files:
+ *   - index.html: The HTML structure defined in index.html uses the styles specified here.
+ *   - script.html: Any dynamically generated elements or classes used in script.html are styled here.
+ *   - Code.gs: While Code.gs handles server-side logic, it does not directly interact with styles.
+ *
+ * Data Framework:
+ *   - The styles are applied to elements that display data from the user or from the server,
+ *     ensuring a consistent and visually appealing presentation.
+ *
+ * Author: [Your Name]
+ * Date: [Date]
+ *******************************************************************************************/
+-->
+
+<style>
+  /*******************************************************************************************
+   * General Styles
+   * Description:
+   *   Styles applied to the entire web app, including font settings and basic layout adjustments.
+   *******************************************************************************************/
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  h3 {
+    margin-top: 0;
+  }
+
+  /*******************************************************************************************
+   * Left Side Styles
+   * Description:
+   *   Styles for the left side of the web app, which includes the logo, section menu, and form inputs.
+   *******************************************************************************************/
+  #leftSide {
+    width: 40%;
+    background-color: #f0f0f0;
+    padding: 20px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    position: relative;
+  }
+
+  /* Logo Container and Image */
+  #logoContainer {
+    text-align: right;
+    margin-bottom: 20px;
+  }
+
+  #logo {
+    max-width: 150px;
+    height: auto;
+  }
+
+  /* Section Menu */
+  #sectionMenu {
+    display: flex;
+    flex-direction: column;
+    width: 100%;  /* Added to ensure container is full width */
+  }
+
+  #sectionMenu button {
+    background-color: blue;
+    color: white;
+    border: none;
+    padding: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    text-align: left;
+    width: 100%;  /* Added to make buttons full width */
+    box-sizing: border-box;  /* Added to include padding in width calculation */
+  }
+
+  #sectionMenu button:hover {
+    background-color: #005cbf;
+  }
+
+  #sectionMenu button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+  }
+
+  /* Section Content */
+  #sectionContent {
+    display: none;
+    width: 100%;  /* Added for consistency */
+  }
+
+  #sectionContent button {
+      width: auto;  /* Keep these buttons at their natural width */
+  }
+  #sectionFields label {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  #sectionFields input[type="text"],
+  #sectionFields input[type="email"],
+  #sectionFields input[type="number"],
+  #sectionFields input[type="url"],
+  #sectionFields input[type="date"],
+  #sectionFields select,
+  #sectionFields textarea {
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+  }
+
+  #sectionFields input[readonly] {
+    background-color: #e9ecef;
+  }
+
+  #sectionFields button {
+    margin-top: 10px;
+  }
+
+  /*******************************************************************************************
+   * Right Side Styles
+   * Description:
+   *   Styles for the right side of the web app, which includes the PR number, submission preview,
+   *   and submit button.
+   *******************************************************************************************/
+  #rightSide {
+    width: 60%;
+    padding: 20px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    position: relative;
+  }
+
+  /* PR Number Container */
+  #prNumberContainer {
+    text-align: right;
+    margin-bottom: 20px;
+  }
+
+  #prNumberContainer p {
+    font-size: 18px;
+    margin: 0;
+  }
+
+  /* Submit Button */
+  #rightSide button {
+    background-color: green;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-bottom: 20px;
+  }
+
+  #rightSide button:hover {
+    background-color: #28a745;
+  }
+
+  /* Preview Content */
+  #previewContent {
+    border: 1px solid #ccc;
+    padding: 15px;
+    overflow-y: auto;
+    max-height: calc(100% - 100px);
+  }
+
+  #previewContent h3 {
+    background-color: #e9ecef;
+    padding: 10px;
+  }
+
+  #previewContent p {
+    margin: 5px 0;
+  }
+
+  /* Highlighted Fields */
+  .highlight-required {
+    background-color: #fff3cd; /* Yellow */
+  }
+
+  .highlight-filled {
+    background-color: #d4edda; /* Green */
+  }
+
+  /*******************************************************************************************
+   * Line Items Table Styles
+   * Description:
+   *   Styles for the line items table in the Line Items section and the preview.
+   *******************************************************************************************/
+  #lineItemsTable,
+  #previewContent table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  #lineItemsTable th,
+  #lineItemsTable td,
+  #previewContent th,
+  #previewContent td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: left;
+  }
+
+  #lineItemsTable th {
+    background-color: #e9ecef;
+  }
+
+  #lineItemsTable button {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+
+  /*******************************************************************************************
+   * Responsive Design
+   * Description:
+   *   Styles to ensure the web app is responsive and functions well on different screen sizes.
+   *******************************************************************************************/
+  @media (max-width: 768px) {
+    body {
+      flex-direction: column;
+    }
+
+    #leftSide,
+    #rightSide {
+      width: 100%;
+      height: auto;
+    }
+
+    #leftSide {
+      order: 2;
+    }
+
+    #rightSide {
+      order: 1;
+    }
+  }
+
+  /*******************************************************************************************
+   * Additional Styles
+   * Description:
+   *   Any additional styles required for new UI elements or specific customizations.
+   *******************************************************************************************/
+  /* Buttons within Sections */
+  #sectionContent button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-right: 10px;
+  }
+
+  #sectionContent button:hover {
+    background-color: #0056b3;
+  }
+
+  /* Input Fields for "Other" Options */
+  #sectionFields input[type="text"][name$="Other"],
+  #sectionFields input[type="text"][name$="Other"] {
+    display: inline-block;
+    width: auto;
+    margin-left: 10px;
+  }
+
+  /* Disabled Section Buttons */
+  #sectionMenu button[disabled] {
+    background-color: #cccccc;
+    cursor: not-allowed;
+    color: #666666;
+  }
+
+  /* Validation Error Highlighting */
+  #sectionMenu button.error {
+    background-color: red;
+    color: white;
+  }
+
+  /* Scrollbar Styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #888;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+
+  /* Table in Preview */
+  #previewContent table {
+    margin-top: 10px;
+  }
+
+  /* Responsive Tables */
+  table {
+    width: 100%;
+    table-layout: fixed;
+    word-wrap: break-word;
+  }
+
+  /* Highlighted Input Fields */
+  input[type="text"].error,
+  select.error,
+  textarea.error {
+    border: 2px solid red;
+  }
+
+  #sectionMenu button.validation-error {
+  background-color: red !important;
+  color: black !important;
+  }
+
+  #sectionFields input.validation-error,
+  #sectionFields select.validation-error,
+  #sectionFields textarea.validation-error {
+   border: 2px solid red;
+  }
+
+  /* Validation error styles for section buttons */
+  #sectionMenu button.validation-error {
+    background-color: red !important;
+   color: black !important;
+   transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Validation error styles for preview headers */
+  #previewContent strong.validation-error {
+   color: red !important;
+   transition: color 0.3s ease;
+  }
+
+  /* Override default button hover for error state */
+  #sectionMenu button.validation-error:hover {
+   background-color: #ff3333 !important;
+  }
+
+
+
+
+/* Top row for Sections 1 and 7 */
+.top-section-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 15px !important;
+  margin: 0 0 15px 0 !important;
+  width: 100% !important;
+}
+
+/* Keep existing quad-section-grid styles */
+.quad-section-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  grid-template-rows: repeat(2, auto) !important;
+  gap: 15px !important;
+  margin: 0 0 15px 0 !important;
+  width: 100% !important;
+}
+
+.quad-section, .top-section {
+  background-color: #f8f9fa !important;
+  border: 1px solid #dee2e6 !important;
+  border-radius: 4px !important;
+  padding: 15px !important;
+  margin: 0 !important;
+  min-height: 150px !important;
+}
+
+.quad-section h3, .top-section h3 {
+  margin: -15px -15px 10px -15px !important;
+  padding: 10px !important;
+  background-color: #e9ecef !important;
+  border-top-left-radius: 4px !important;
+  border-top-right-radius: 4px !important;
+  font-size: 0.95em !important;
+}
+
+.full-width-section {
+  width: 100% !important;
+  margin: 15px 0 !important;
+  background-color: #f8f9fa !important;
+  border: 1px solid #dee2e6 !important;
+  border-radius: 4px !important;
+  padding: 15px !important;
+}
+
+.full-width-section h3 {
+  margin: -15px -15px 10px -15px !important;
+  padding: 10px !important;
+  background-color: #e9ecef !important;
+  border-top-left-radius: 4px !important;
+  border-top-right-radius: 4px !important;
+}
+
+/* Override any conflicting styles */
+#previewContent > div {
+  width: 100% !important;
+}
+
+#previewContent .quad-section-grid > div,
+#previewContent .top-section-grid > div {
+  width: auto !important;
+}
+
+
+/* Default (incomplete) state */
+#rightSide button[onclick="submitForm()"] {
+  background-color: #6c757d !important; /* Bootstrap gray */
+  color: white !important;
+  border: none !important;
+  padding: 12px 20px !important;
+  cursor: pointer !important;
+  font-size: 16px !important;
+  margin-bottom: 20px !important;
+  transition: background-color 0.3s ease !important;
+}
+
+/* Complete state */
+#rightSide button[onclick="submitForm()"].all-fields-complete {
+  background-color: #28a745 !important; /* Bootstrap green */
+}
+
+/* Hover states */
+#rightSide button[onclick="submitForm()"].all-fields-complete:hover {
+  background-color: #218838 !important; /* Darker green */
+}
+
+#rightSide button[onclick="submitForm()"]:hover {
+  background-color: #5a6268 !important; /* Darker gray */
+}
+ 
+
+</style>
+

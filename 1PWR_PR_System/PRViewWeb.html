@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Purchase Request Details</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <?!= include('SystemUtilities'); ?>
+    <?!= include('SessionUtilities'); ?>
+</head>
+<body class="bg-gray-100 p-6">
+    
+    <div class="bg-white shadow-sm mb-6">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center py-4">
+          <!-- Logo -->
+          <div class="flex items-center">
+            <img 
+              src="https://1pwrafrica.com/wp-content/uploads/2018/11/logo.png" 
+              alt="1PWR Logo" 
+              class="h-10 w-auto"
+            />
+          </div>
+  
+          <!-- Navigation Button -->
+          <button
+            onclick="returnToDashboard()"
+            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
+          >
+            <svg 
+              class="mr-2 -ml-1 h-5 w-5" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path 
+                stroke-linecap="round" 
+                stroke-linejoin="round" 
+                stroke-width="2" 
+                d="M10 19l-7-7m0 0l7-7m-7 7h18" 
+              />
+            </svg>
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="max-w-4xl mx-auto">
+        <? if (!prData) { ?>
+            <!-- Error State -->
+            <div class="bg-white shadow-lg rounded-lg p-6">
+                <h1 class="text-xl font-bold text-red-600">Error Loading PR Details</h1>
+                <p class="mt-2 text-gray-600">Unable to load PR details. Please try again or contact support.</p>
+                <button onclick="window.history.back()" 
+                        class="mt-4 px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+                    Back to Dashboard
+                </button>
+            </div>
+            <script>
+                console.error('PR Data not provided to template');
+            </script>
+        <? } else { ?>
+            <!-- PR Header -->
+            <div class="bg-white shadow-lg rounded-lg p-6 mb-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold">Purchase Request Details</h1>
+                        <p class="text-sm text-gray-500">Submitted: <?= formatDateTime(prData.timestamp) ?></p>
+                    </div>
+                    <div>
+                        <p class="text-lg font-semibold"><?= prData.prNumber ?></p>
+                        <span class="px-3 py-1 rounded-full text-sm font-medium <?= getStatusClass(prData.status) ?>">
+                            <?= prData.status ?>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Controls -->
+            <div class="status-controls mb-6" 
+                 <?!= canUpdateStatus ? '' : 'style="display: none;"' ?>>
+              <select id="statusUpdate" name="status" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                <option value="">Select New Status</option>
+                <option value="In Queue">In Queue</option>
+                <option value="Revise and Resubmit">Revise and Resubmit</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Canceled">Canceled</option>
+                <!-- Add other status options as needed -->
+              </select>
+              <textarea id="statusNotes" 
+                        placeholder="Enter notes for status change"
+                        class="mt-2 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                        <?!= (prData.status === 'Rejected' || prData.status === 'Revise and Resubmit') ? 'required' : '' ?>></textarea>
+              <button onclick="updateStatus()" 
+                      class="mt-2 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                Update Status
+              </button>
+            </div>
+
+            <!-- Main Content Grid -->
+            <div class="grid grid-cols-2 gap-6">
+                <!-- Requestor Information -->
+                <div class="bg-white shadow-lg rounded-lg p-6">
+                    <h2 class="text-lg font-semibold mb-4">Requestor Information</h2>
+                    <div class="space-y-2">
+                        <p><span class="font-medium">Name:</span> <?= prData.requestorName ?></p>
+                        <p><span class="font-medium">Department:</span> <?= prData.department ?></p>
+                        <p><span class="font-medium">Email:</span> <?= prData.requestorEmail ?></p>
+                        <p><span class="font-medium">Description:</span> <?= prData.description ?></p>
+                    </div>
+                </div>
+
+                <!-- Project Details -->
+                <div class="bg-white shadow-lg rounded-lg p-6">
+                    <h2 class="text-lg font-semibold mb-4">Project Details</h2>
+                    <div class="space-y-2">
+                        <p><span class="font-medium">Category:</span> <?= prData.projectCategory ?></p>
+                        <p><span class="font-medium">Organization:</span> <?= prData.organization ?></p>
+                        <p><span class="font-medium">Currency:</span> <?= prData.currency ?></p>
+                        <p><span class="font-medium">Payment Format:</span> <?= prData.paymentFormat ?></p>
+                    </div>
+                </div>
+
+                <!-- Location and Type -->
+                <div class="bg-white shadow-lg rounded-lg p-6">
+                    <h2 class="text-lg font-semibold mb-4">Location and Type</h2>
+                    <div class="space-y-2">
+                        <p><span class="font-medium">Site Location:</span> <?= prData.siteLocation ?></p>
+                        <p><span class="font-medium">Expense Type:</span> <?= prData.expenseType ?></p>
+                        <? if (prData.vehicle) { ?>
+                            <p><span class="font-medium">Vehicle:</span> <?= prData.vehicle ?></p>
+                        <? } ?>
+                    </div>
+                </div>
+
+                <!-- Budget and Timeline -->
+                <div class="bg-white shadow-lg rounded-lg p-6">
+                    <h2 class="text-lg font-semibold mb-4">Budget and Timeline</h2>
+                    <div class="space-y-2">
+                        <p><span class="font-medium">Budget Status:</span> <?= prData.budgetStatus ?></p>
+                        <p><span class="font-medium">Deadline Date:</span> <?= formatDate(prData.deadlineDate) ?></p>
+                        <p><span class="font-medium">Vendor:</span> <?= prData.vendor ?></p>
+                        <p><span class="font-medium">Urgency:</span> <?= prData.urgencyStatus ?></p>
+                        <p><span class="font-medium">Approver:</span> <?= prData.approver ?></p>
+                    </div>
+                </div>
+
+                <!-- Line Items -->
+                <div class="bg-white shadow-lg rounded-lg p-6 col-span-2">
+                  <h2 class="text-lg font-semibold mb-4">Line Items</h2>
+                  <? if (prData._debug) { ?>
+                    <div class="mb-4 p-2 bg-gray-100 text-xs">
+                      <pre><? JSON.stringify(prData._debug, null, 2) ?></pre>
+                    </div>
+                  <? } ?>
+                  <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr class="bg-gray-50">
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">QTY</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">UOM</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">Link</th>
+                        </tr>
+                      </thead>
+                      <tbody class="bg-white divide-y divide-gray-200">
+                        <? if (prData.lineItems && prData.lineItems.length > 0) { ?>
+                          <? prData.lineItems.forEach(function(item, index) { ?>
+                            <tr class="hover:bg-gray-50 transition-colors duration-150">
+                              <td class="px-6 py-4">
+                                <div class="text-sm text-gray-900 break-words"><?= item.item ?></div>
+                              </td>
+                              <td class="px-6 py-4">
+                                <div class="text-sm text-gray-900 text-center"><?= item.qty ?></div>
+                              </td>
+                              <td class="px-6 py-4">
+                                <div class="text-sm text-gray-900 text-center"><?= item.uom ?></div>
+                              </td>
+                              <td class="px-6 py-4">
+                                <div class="text-sm text-center">
+                                  <? if (item.url) { ?>
+                                    <button 
+                                      onclick="window.open('<?= item.url ?>', '_blank')" 
+                                      class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-150"
+                                    >
+                                      <span class="mr-1">View</span>
+                                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                      </svg>
+                                    </button>
+                                  <? } else { ?>
+                                    <span class="text-gray-400">—</span>
+                                  <? } ?>
+                                </div>
+                              </td>
+                            </tr>
+                          <? }); ?>
+                        <? } else { ?>
+                          <tr>
+                            <td colspan="4" class="px-6 py-8 text-center">
+                              <div class="text-gray-500 text-sm">No line items available</div>
+                            </td>
+                          </tr>
+                        <? } ?>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Notes (if any) -->
+                <? if (prData.requestorNotes) { ?>
+                    <div class="bg-white shadow-lg rounded-lg p-6 col-span-2">
+                        <h2 class="text-lg font-semibold mb-4">Notes</h2>
+                        <p class="whitespace-pre-wrap"><?= prData.requestorNotes ?></p>
+                    </div>
+                <? } ?>
+
+                <!-- Procurement Notes (if any) -->
+                <? if (prData.procurementNotes) { ?>
+                    <div class="bg-white shadow-lg rounded-lg p-6 col-span-2">
+                        <h2 class="text-lg font-semibold mb-4">Procurement Notes</h2>
+                        <p class="whitespace-pre-wrap"><?= prData.procurementNotes ?></p>
+                    </div>
+                <? } ?>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="mt-6 flex justify-end">
+                <button onclick="window.history.back()" 
+                        class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+                    Back to Dashboard
+                </button>
+            </div>
+
+            <script>
+                console.log('PR Data loaded:', <?!= JSON.stringify(prData) ?>);
+                
+                /**
+                 * Updates the status of the PR.
+                 * Sends the new status and notes to the server for processing.
+                 */
+                function updateStatus() {
+                  const canUpdate = <?= canUpdateStatus ? 'true' : 'false' ?>;
+                  if (!canUpdate) {
+                    alert('Not authorized to update status');
+                    return;
+                  }
+
+                  const newStatus = document.getElementById('statusUpdate').value;
+                  const statusNotes = document.getElementById('statusNotes').value;
+
+                  if (!newStatus) {
+                    alert('Please select a new status.');
+                    return;
+                  }
+
+                  // Confirm status update
+                  if (!confirm(`Are you sure you want to change the status to "${newStatus}"?`)) {
+                    return;
+                  }
+
+                  // Send status update to server
+                  google.script.run
+                    .withSuccessHandler(function(response) {
+                      if (response.success) {
+                        alert(response.message);
+                        location.reload(); // Reload the page to reflect changes
+                      } else {
+                        alert('Error: ' + response.error);
+                      }
+                    })
+                    .withFailureHandler(function(error) {
+                      console.error('Failed to update status:', error);
+                      alert('An unexpected error occurred while updating status.');
+                    })
+                    .updateStatus(prData.prNumber, newStatus, statusNotes);
+                }
+            </script>
+        <? } ?>
+    </div>
+
+    <script>
+        // Utility functions 
+        function getStatusClass(status) {
+            const statusColors = {
+                'Submitted': 'bg-blue-100 text-blue-800',
+                'In Queue': 'bg-yellow-100 text-yellow-800',
+                'Ordered': 'bg-green-100 text-green-800',
+                'Completed': 'bg-gray-100 text-gray-800',
+                'Rejected': 'bg-red-100 text-red-800',
+                'Revise and Resubmit': 'bg-orange-100 text-orange-800',
+                'Canceled': 'bg-gray-100 text-gray-600'
+            };
+            return statusColors[status] || 'bg-gray-100 text-gray-800';
+        }
+
+        function formatDateTime(date) {
+            if (!date) return '';
+            try {
+                const d = new Date(date);
+                return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+            } catch (e) {
+                console.error('Error formatting date:', e);
+                return date.toString();
+            }
+        }
+
+        function formatDate(date) {
+            if (!date) return '';
+            try {
+                return new Date(date).toLocaleDateString();
+            } catch (e) {
+                console.error('Error formatting date:', e);
+                return date.toString();
+            }
+        }
+
+        function returnToDashboard() {
+            google.script.run
+            .withSuccessHandler(function(url) {
+                window.top.location.href = url;
+            })
+            .getWebAppUrl();
+        }
+
+        /**
+ * Enhanced client-side handlers for PR View
+ * Adds session management and validation
+ */
+
+// Track if there are unsaved changes
+let hasUnsavedChanges = false;
+
+// Add initialization on page load
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize session handling
+  SessionUtils.initializeSession();
+  
+  // Set up change tracking
+  document.querySelectorAll('form input, form select, form textarea').forEach(element => {
+    element.addEventListener('change', () => {
+      hasUnsavedChanges = true;
+    });
+  });
+
+  // Set up beforeunload handler for unsaved changes
+  window.addEventListener('beforeunload', function(e) {
+    if (hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+      return e.returnValue;
+    }
+  });
+});
+
+/**
+ * Enhanced updateStatus function with session handling
+ */
+function updateStatus() {
+  const sessionId = SessionUtils.getSessionId();
+  if (!sessionId) {
+    SessionUtils.handleSessionExpiry();
+    return;
+  }
+
+  const canUpdate = <?= canUpdateStatus ? 'true' : 'false' ?>;
+  if (!canUpdate) {
+    showError('Not authorized to update status');
+    return;
+  }
+
+  const newStatus = document.getElementById('statusUpdate').value;
+  const statusNotes = document.getElementById('statusNotes').value;
+
+  if (!newStatus) {
+    showError('Please select a new status.');
+    return;
+  }
+
+  // Confirm status update
+  if (!confirm(`Are you sure you want to change the status to "${newStatus}"?`)) {
+    return;
+  }
+
+  // Show loading state
+  const submitButton = document.querySelector('button[onclick="updateStatus()"]');
+  submitButton.disabled = true;
+  submitButton.textContent = 'Updating...';
+
+  google.script.run
+    .withSuccessHandler(function(response) {
+      if (response.success) {
+        hasUnsavedChanges = false;
+        showSuccess(response.message);
+        location.reload();
+      } else {
+        if (response.sessionExpired) {
+          SessionUtils.handleSessionExpiry();
+        } else {
+          showError('Error: ' + response.error);
+          submitButton.disabled = false;
+          submitButton.textContent = 'Update Status';
+        }
+      }
+    })
+    .withFailureHandler(function(error) {
+      console.error('Failed to update status:', error);
+      showError('An unexpected error occurred while updating status.');
+      submitButton.disabled = false;
+      submitButton.textContent = 'Update Status';
+    })
+    .updateStatus(prData.prNumber, newStatus, statusNotes, sessionId);
+}
+
+/**
+ * Enhanced returnToDashboard with session handling
+ */
+function returnToDashboard() {
+  if (hasUnsavedChanges) {
+    if (!confirm('You have unsaved changes. Are you sure you want to leave?')) {
+      return;
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(function(url) {
+      window.top.location.href = SessionUtils.appendSessionToUrl(url);
+    })
+    .getWebAppUrl();
+}
+
+/**
+ * Enhanced function to generate PR link with session
+ */
+function generatePRLink(prNumber) {
+  return google.script.run
+    .withSuccessHandler(function(url) {
+      return SessionUtils.appendSessionToUrl(`${url}?pr=${encodeURIComponent(prNumber)}`);
+    })
+    .getWebAppUrl();
+}
+
+/**
+ * Success message display
+ */
+function showSuccess(message) {
+  const successDiv = document.createElement('div');
+  successDiv.className = 'fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded z-50';
+  successDiv.innerHTML = `
+    <strong class="font-bold">Success:</strong>
+    <span class="block sm:inline">${message}</span>
+  `;
+  document.body.appendChild(successDiv);
+  setTimeout(() => successDiv.remove(), 5000);
+}
+
+// Error handling function (modified for consistency)
+function showError(message) {
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50';
+  errorDiv.innerHTML = `
+    <strong class="font-bold">Error:</strong>
+    <span class="block sm:inline">${message}</span>
+  `;
+  document.body.appendChild(errorDiv);
+  setTimeout(() => errorDiv.remove(), 5000);
+}
+
+// Preserve existing utility functions but enhance with session awareness
+function formatDateTime(date) {
+  if (!date) return '';
+  try {
+    return new Date(date).toLocaleString();
+  } catch (e) {
+    console.error('Error formatting date:', e);
+    return date.toString();
+  }
+}
+
+function formatDate(date) {
+  if (!date) return '';
+  try {
+    return new Date(date).toLocaleDateString();
+  } catch (e) {
+    console.error('Error formatting date:', e);
+    return date.toString();
+  }
+}
+
+/**
+ * Download handler for attachments
+ */
+function downloadAttachment(url, filename) {
+  const sessionId = SessionUtils.getSessionId();
+  if (!sessionId) {
+    SessionUtils.handleSessionExpiry();
+    return;
+  }
+
+  // Append session ID to download URL
+  const downloadUrl = SessionUtils.appendSessionToUrl(url);
+  window.open(downloadUrl, '_blank');
+}
+    </script>
+</body>
+</html>

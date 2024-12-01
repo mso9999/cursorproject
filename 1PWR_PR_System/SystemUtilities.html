@@ -1,0 +1,294 @@
+
+
+
+<script>
+
+
+function showError(message, type = 'error') {
+  // Remove any existing error messages
+  const existingErrors = document.querySelectorAll('.system-message');
+  existingErrors.forEach(error => error.remove());
+
+  // Create new error message
+  const errorDiv = document.createElement('div');
+  errorDiv.className = `system-message ${type} fixed top-4 right-4 max-w-sm p-4 rounded-lg shadow-lg
+    ${type === 'error' ? 'bg-red-100 text-red-700 border-red-400' : 
+      type === 'warning' ? 'bg-yellow-100 text-yellow-700 border-yellow-400' :
+      'bg-blue-100 text-blue-700 border-blue-400'}`;
+
+  errorDiv.innerHTML = `
+    <div class="flex items-center">
+      <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9 8v4h2V8H9zm0 6h2v-1H9v1z"/>
+      </svg>
+      <span>${message}</span>
+    </div>
+    <button onclick="this.parentElement.remove()" class="absolute top-1 right-1 p-1">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/>
+      </svg>
+    </button>
+  `;
+
+  document.body.appendChild(errorDiv);
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    if (errorDiv.parentElement) {
+      errorDiv.remove();
+    }
+  }, 5000);
+}
+
+/**
+ * Shows error message for specific form field
+ * @param {string} fieldId - ID of form field
+ * @param {string} message - Error message
+ */
+function showFieldError(fieldId, message) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+
+  // Add error styling to field
+  field.classList.add('invalid-input');
+  field.setAttribute('aria-invalid', 'true');
+
+  // Show error message
+  const errorSpan = document.getElementById(`${fieldId}Error`);
+  if (errorSpan) {
+    errorSpan.textContent = message;
+    errorSpan.classList.remove('hidden');
+  }
+
+  // Add shake animation
+  field.classList.add('shake');
+  setTimeout(() => field.classList.remove('shake'), 500);
+}
+
+/**
+ * Clears all error messages and styling
+ */
+function clearErrors() {
+  // Clear field errors
+  document.querySelectorAll('.invalid-input').forEach(field => {
+    field.classList.remove('invalid-input');
+    field.removeAttribute('aria-invalid');
+  });
+
+  // Hide error messages
+  document.querySelectorAll('.error-message').forEach(message => {
+    message.classList.add('hidden');
+    message.textContent = '';
+  });
+
+  // Remove system messages
+  document.querySelectorAll('.system-message').forEach(message => {
+    message.remove();
+  });
+}
+
+/**
+ * Formats date for display
+ * @param {Date|string} date - Date to format
+ * @param {string} [format='short'] - Format style (short, long, iso)
+ * @returns {string} Formatted date string
+ */
+function formatDate(date, format = 'short') {
+  if (!date) return '';
+  
+  const dateObj = new Date(date);
+  if (isNaN(dateObj.getTime())) return '';
+
+  const options = {
+    short: { year: 'numeric', month: 'short', day: 'numeric' },
+    long: { year: 'numeric', month: 'long', day: 'numeric' },
+    iso: { year: 'numeric', month: '2-digit', day: '2-digit' }
+  };
+
+  try {
+    if (format === 'iso') {
+      return dateObj.toISOString().split('T')[0];
+    }
+    return dateObj.toLocaleDateString(undefined, options[format] || options.short);
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return date.toString();
+  }
+}
+
+/**
+ * Formats date and time for display
+ * @param {Date|string} datetime - Date/time to format
+ * @param {boolean} [includeSeconds=false] - Whether to include seconds
+ * @returns {string} Formatted date/time string
+ */
+function formatDateTime(datetime, includeSeconds = false) {
+  if (!datetime) return '';
+  
+  const dateObj = new Date(datetime);
+  if (isNaN(dateObj.getTime())) return '';
+
+  try {
+    const dateOptions = { year: 'numeric', month: 'short', day: 'numeric' };
+    const timeOptions = {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(includeSeconds && { second: '2-digit' }),
+      hour12: true
+    };
+
+    const datePart = dateObj.toLocaleDateString(undefined, dateOptions);
+    const timePart = dateObj.toLocaleTimeString(undefined, timeOptions);
+    
+    return `${datePart} at ${timePart}`;
+  } catch (error) {
+    console.error('DateTime formatting error:', error);
+    return datetime.toString();
+  }
+}
+
+/**
+ * Shows loading state for element
+ * @param {string} elementId - ID of element to show loading state for
+ */
+function showLoading(elementId) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+
+  element.classList.add('loading');
+  
+  // Add loading overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'loading-overlay absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center';
+  overlay.innerHTML = `
+    <div class="loading-spinner"></div>
+  `;
+  
+  element.style.position = 'relative';
+  element.appendChild(overlay);
+}
+
+/**
+ * Hides loading state for element
+ * @param {string} elementId - ID of element to hide loading state for
+ */
+function hideLoading(elementId) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+
+  element.classList.remove('loading');
+  
+  // Remove loading overlay
+  const overlay = element.querySelector('.loading-overlay');
+  if (overlay) {
+    overlay.remove();
+  }
+}
+
+/**
+ * Calculates business days between two dates
+ * @param {Date|string} startDate - Start date
+ * @param {Date|string} endDate - End date
+ * @returns {number} Number of business days
+ */
+function calculateBusinessDays(startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  
+  let count = 0;
+  let current = new Date(start);
+  
+  while (current <= end) {
+    // Skip weekends (0 = Sunday, 6 = Saturday)
+    if (current.getDay() !== 0 && current.getDay() !== 6) {
+      count++;
+    }
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return count;
+}
+
+/**
+ * Gets status class for styling
+ * @param {Object} poData - PO data object
+ * @returns {string} CSS class for status
+ */
+function getStatusClass(poData) {
+  if (poData.daysOverdue > 0) {
+    return poData.daysOverdue >= 30 ? 'overdue' : 'warning';
+  }
+  return 'current';
+}
+
+/**
+ * Generates view link for PO
+ * @param {string} poNumber - PO number
+ * @returns {string} URL to view PO
+ */
+function generateViewLink(poNumber) {
+  return `viewPO.html?po=${encodeURIComponent(poNumber)}`;
+}
+
+/**
+ * Generates update link for PO
+ * @param {string} poNumber - PO number
+ * @returns {string} URL to update PO landing date
+ */
+function generateUpdateLink(poNumber) {
+  return `updateLandingDate.html?po=${encodeURIComponent(poNumber)}`;
+}
+
+/**
+ * Safely gets URL parameter
+ * @param {string} param - Parameter name
+ * @returns {string|null} Parameter value
+ */
+function getUrlParam(param) {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get(param);
+}
+
+/**
+ * Validates email address format
+ * @param {string} email - Email address to validate
+ * @returns {boolean} Whether email is valid
+ */
+function isValidEmail(email) {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(String(email).toLowerCase());
+}
+
+/**
+ * Handles server errors
+ * @param {Error|string} error - Error object or message
+ * @param {string} [context] - Error context
+ */
+function handleServerError(error, context = '') {
+  console.error(`Server error ${context ? `in ${context}` : ''}:`, error);
+  
+  const message = error.message || error.toString();
+  showError(`An error occurred${context ? ` while ${context}` : ''}: ${message}`);
+}
+
+/**
+     * Formats date in DD-MMM-YY format
+     * @param {Date|string} date - Date to format
+     * @returns {string} Formatted date string
+     */
+    function formatDateShort(date) {
+        if (!date) return '';
+        const d = new Date(date);
+        if (isNaN(d.getTime())) return '';
+        
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = months[d.getMonth()];
+        const year = d.getFullYear().toString().slice(-2);
+        
+        return `${day}-${month}-${year}`;
+    }
+
+</script>

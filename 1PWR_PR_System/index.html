@@ -1,0 +1,269 @@
+<!--
+/*******************************************************************************************
+ * File: index.html
+ * Description:
+ *   This is the main HTML file for the custom purchase request web app. It defines the
+ *   structure of the web app, including the left and right sides of the interface, and
+ *   includes client-side scripts and styles. The left side contains the section menu and
+ *   input fields, while the right side displays the submission preview and PR number.
+ *
+ * Relationship with Other Files:
+ *   - script.html: Included in this file to provide client-side JavaScript functions.
+ *   - style.html: Included in this file to provide CSS styles for the web app.
+ *   - Code.gs: Contains server-side scripts that process form submissions and provide data
+ *     for dropdowns and other dynamic elements.
+ *
+ * Data Framework:
+ *   - The web app interacts with several sheets in the "1PWR PR MASTER TRACKING" spreadsheet
+ *     to populate dropdowns and store form responses.
+ *
+ * Author: [Your Name]
+ * Date: [Date]
+ *******************************************************************************************/
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<title>Submit Purchase Request</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+<?!= include('style'); ?>
+<?!= include('SessionUtilities'); ?>
+<?!= include('SystemUtilities'); ?>
+</head>
+<body>
+<!-- Existing header section -->
+<header class="bg-white shadow-sm">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="py-4">
+      <!-- Logo and back button -->
+      <div class="flex justify-between items-center mb-4">
+        <img
+          src="https://1pwrafrica.com/wp-content/uploads/2018/11/logo.png"
+          alt="1PWR Logo"
+          class="h-10 w-auto">
+        <button
+          onclick="confirmReturn()"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+          </svg>
+          Back to Dashboard
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Main form content - structure remains largely the same -->
+<div id="formContainer" class="flex">
+  <!-- Left side with form sections -->
+  <div id="leftSide">
+    <div id="sectionMenu">
+      <!-- Existing section buttons -->
+    </div>
+    <div id="sectionContent" style="display: none;">
+      <div id="sectionFields"></div>
+      <button onclick="copyToPreview()">Copy to Preview</button>
+      <button onclick="goBack()">Back</button>
+    </div>
+  </div>
+
+  <!-- Right side with preview -->
+  <div id="rightSide">
+    <div id="prNumberContainer">
+      <p><strong>PR Number:</strong> <span id="prNumber"></span></p>
+    </div>
+    <button onclick="submitForm()" id="submitButton">Submit</button>
+    <div id="previewContent"></div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+  <div class="bg-white rounded-lg p-4 flex items-center space-x-3">
+    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    <span class="text-gray-700 font-medium">Processing...</span>
+  </div>
+</div>
+
+<script>
+/**
+ * Enhanced form handling with session management
+ */
+
+// Track form state
+let hasUnsavedChanges = false;
+let isSubmitting = false;
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize session handling
+  SessionUtils.initializeSession();
+  
+  // Initialize form
+  initializeForm();
+  
+  // Set up change tracking
+  trackFormChanges();
+  
+  // Set up navigation warning
+  setupNavigationWarning();
+});
+
+function initializeForm() {
+  const sessionId = SessionUtils.getSessionId();
+  if (!sessionId) {
+    SessionUtils.handleSessionExpiry();
+    return;
+  }
+
+  // Fetch PR number
+  google.script.run
+    .withSuccessHandler(function(prNumber) {
+      document.getElementById('prNumber').textContent = prNumber;
+      formData.prNumber = prNumber;
+    })
+    .withFailureHandler(function(error) {
+      showError('Failed to generate PR number: ' + error);
+    })
+    .getPRNumber(sessionId);
+
+  // Initialize form data
+  loadInitialData();
+}
+
+function loadInitialData() {
+  const sessionId = SessionUtils.getSessionId();
+  
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (data.sessionExpired) {
+        SessionUtils.handleSessionExpiry();
+        return;
+      }
+      
+      // Populate dropdowns and initial data
+      populateDropdowns(data);
+      
+      // Initialize form sections
+      initializeSections();
+      
+      // Update preview
+      updatePreview();
+    })
+    .withFailureHandler(function(error) {
+      showError('Failed to load form data: ' + error);
+    })
+    .getFormInitialData(sessionId);
+}
+
+function trackFormChanges() {
+  document.querySelectorAll('input, select, textarea').forEach(element => {
+    element.addEventListener('change', () => {
+      hasUnsavedChanges = true;
+      updateSubmitButtonState();
+    });
+  });
+}
+
+function setupNavigationWarning() {
+  window.addEventListener('beforeunload', function(e) {
+    if (hasUnsavedChanges && !isSubmitting) {
+      e.preventDefault();
+      e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+      return e.returnValue;
+    }
+  });
+}
+
+function confirmReturn() {
+  if (hasUnsavedChanges) {
+    if (!confirm('You have unsaved changes. Are you sure you want to return to the dashboard?')) {
+      return;
+    }
+  }
+  returnToDashboard();
+}
+
+function returnToDashboard() {
+  const sessionId = SessionUtils.getSessionId();
+  google.script.run
+    .withSuccessHandler(function(url) {
+      window.top.location.href = SessionUtils.appendSessionToUrl(url);
+    })
+    .getWebAppUrl();
+}
+
+/**
+ * Enhanced form submission with session validation
+ */
+function submitForm() {
+  const sessionId = SessionUtils.getSessionId();
+  if (!sessionId) {
+    SessionUtils.handleSessionExpiry();
+    return;
+  }
+
+  // Validate form
+  const validationResult = validateFormBeforeSubmit();
+  if (!validationResult.isValid) {
+    updateValidationUI(validationResult.errors);
+    showError('Please fill in all required fields before submitting.');
+    return;
+  }
+
+  // Confirm submission
+  if (!confirm('Are you sure you want to submit this Purchase Request?')) {
+    return;
+  }
+
+  // Show loading state
+  isSubmitting = true;
+  showLoading();
+  const submitButton = document.getElementById('submitButton');
+  submitButton.disabled = true;
+
+  // Add session ID to form data
+  formData.sessionId = sessionId;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      hideLoading();
+      if (result.success) {
+        hasUnsavedChanges = false;
+        alert('Form submitted successfully! PR Number: ' + result.prNumber);
+        
+        // Redirect to dashboard
+        window.top.location.href = SessionUtils.appendSessionToUrl(result.redirectUrl);
+      } else {
+        isSubmitting = false;
+        submitButton.disabled = false;
+        
+        if (result.sessionExpired) {
+          SessionUtils.handleSessionExpiry();
+        } else {
+          showError('Error submitting form: ' + (result.message || 'Unknown error'));
+        }
+      }
+    })
+    .withFailureHandler(function(error) {
+      hideLoading();
+      isSubmitting = false;
+      submitButton.disabled = false;
+      showError('Failed to submit form: ' + error);
+    })
+    .processForm(formData);
+}
+function returnToDashboard() {
+  google.script.run
+    .withSuccessHandler(function(url) {
+      window.top.location.href = url;
+    })
+    .getWebAppUrl();
+}
+</script>
+</body>
+</html>
+
